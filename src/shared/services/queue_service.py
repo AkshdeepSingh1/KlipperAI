@@ -11,8 +11,14 @@ class QueueService:
     
     def __init__(self):
         """Initialize Queue Service with connection string"""
-        self.connection_string = settings.AZURE_STORAGE_CONNECTION_STRING
+        # Strip any whitespace from connection string
+        self.connection_string = settings.AZURE_STORAGE_CONNECTION_STRING.strip() if settings.AZURE_STORAGE_CONNECTION_STRING else None
         self.queue_name = settings.AZURE_QUEUE_NAME
+        
+        if not self.connection_string:
+            logger.error("AZURE_STORAGE_CONNECTION_STRING is not configured")
+        if not self.queue_name:
+            logger.error("AZURE_QUEUE_NAME is not configured")
         
     def send_message(self, message_data: dict) -> bool:
         """
@@ -25,6 +31,15 @@ class QueueService:
             bool: True if message sent successfully, False otherwise
         """
         try:
+            # Validate configuration
+            if not self.connection_string:
+                logger.error("Cannot send message: AZURE_STORAGE_CONNECTION_STRING is not configured")
+                return False
+            
+            if not self.queue_name:
+                logger.error("Cannot send message: AZURE_QUEUE_NAME is not configured")
+                return False
+            
             # Create queue client
             queue_client = QueueClient.from_connection_string(
                 self.connection_string,
@@ -40,8 +55,12 @@ class QueueService:
             logger.info(f"Message sent to queue '{self.queue_name}': {message_data}")
             return True
             
+        except ValueError as e:
+            logger.error(f"Invalid connection string format: {str(e)}")
+            logger.error("Please check your AZURE_STORAGE_CONNECTION_STRING in .env file")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send message to queue: {str(e)}")
+            logger.error(f"Failed to send message to queue: {str(e)}", exc_info=True)
             return False
     
     def send_video_processing_message(

@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.orm import Session
-from src.api.modules.video_upload.services import video_upload_service
+from src.api.modules.video_input_output.services import video_upload_service
 from src.shared.core.logger import get_logger
 from src.shared.core.database import get_db
 from src.shared.services.queue_service import queue_service
@@ -11,8 +11,8 @@ from src.shared.models import Video
 logger = get_logger(__name__)
 
 router = APIRouter(
-    prefix="/api/video-upload",
-    tags=["Video Upload"]
+    prefix="/api/videoInputOutput",
+    tags=["Video Input Output"]
 )
 
 
@@ -28,6 +28,7 @@ class SASTokenResponse(BaseModel):
 
 @router.get("/generate-upload-url", response_model=SASTokenResponse)
 async def generate_upload_url(
+    request: Request,
     file_extension: str = Query(
         default="mp4",
         description="File extension for the video (e.g., mp4, mov, avi)",
@@ -80,7 +81,8 @@ async def generate_upload_url(
         
         result = video_upload_service.generate_upload_sas_url(
             file_extension=file_extension,
-            expiry_hours=expiry_hours
+            expiry_hours=expiry_hours,
+            user_id=request.state.user_id,
         )
         
         return SASTokenResponse(
@@ -106,8 +108,8 @@ async def generate_upload_url(
 @router.get("/verify-upload/{blob_name}")
 async def verify_upload(
     blob_name: str,
-    db: Session = Depends(get_db),
-    user_id: Optional[int] = Query(None, description="User ID who uploaded the video")
+    request: Request,
+    db: Session = Depends(get_db)
 ):
     """
     Verify if a video has been successfully uploaded to Azure Blob Storage,
@@ -115,8 +117,8 @@ async def verify_upload(
     
     Args:
         blob_name: Name of the blob to verify
+        request: Request object (contains authenticated user_id)
         db: Database session
-        user_id: Optional user ID who uploaded the video
         
     Returns:
         dict: Contains verification status, video ID, and processing status
@@ -125,7 +127,10 @@ async def verify_upload(
         HTTPException: If verification fails
     """
     try:
-        logger.info(f"Verifying blob existence: {blob_name}")
+        # Get user_id from authenticated request
+        user_id = request.state.user_id
+        
+        logger.info(f"Verifying blob existence: {blob_name} for user_id={user_id}")
         
         # Verify blob exists in Azure Storage
         exists = video_upload_service.verify_blob_exists(blob_name)

@@ -3,6 +3,7 @@ from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPerm
 from src.shared.core.config import settings
 from src.shared.core.logger import get_logger
 import uuid
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,8 @@ class VideoUploadService:
     def generate_upload_sas_url(
         self, 
         file_extension: str = "mp4",
-        expiry_hours: int = 1
+        expiry_hours: int = 1,
+        user_id: Optional[int] = None,
     ) -> dict:
         """
         Generate a SAS URL for uploading a video to Azure Blob Storage
@@ -40,7 +42,11 @@ class VideoUploadService:
             # Generate unique blob name with timestamp
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
-            blob_name = f"videos/{timestamp}_{unique_id}.{file_extension}"
+            # Include user_id folder if provided
+            if user_id is not None:
+                blob_name = f"videos/{user_id}/{timestamp}_{unique_id}.{file_extension}"
+            else:
+                blob_name = f"videos/{timestamp}_{unique_id}.{file_extension}"
             
             # Calculate expiry time
             expiry_time = datetime.utcnow() + timedelta(hours=expiry_hours)

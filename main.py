@@ -5,7 +5,7 @@ from src.shared.core.config import settings
 from src.shared.core.logger import configure_application_logging, get_logger
 from src.shared.core.database import init_db, cleanup_db
 from src.api.middleware.auth_middleware import AuthMiddleware
-from src.api.modules.video_upload.routers import router as video_upload_router
+from src.api.modules.video_input_output.routers import router as video_upload_router
 from src.api.modules.auth.routers import router as auth_router
 from src.api.modules.user.routers import router as user_router
 
