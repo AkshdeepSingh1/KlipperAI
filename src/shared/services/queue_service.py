@@ -14,6 +14,11 @@ class QueueService:
         # Strip any whitespace from connection string
         self.connection_string = settings.AZURE_STORAGE_CONNECTION_STRING.strip() if settings.AZURE_STORAGE_CONNECTION_STRING else None
         self.queue_name = settings.AZURE_QUEUE_NAME
+        self.account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", None)
+        self.account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", None)
+        self.queue_account_url = (
+            f"https://{self.account_name}.queue.core.windows.net" if self.account_name else None
+        )
         
         if not self.connection_string:
             logger.error("AZURE_STORAGE_CONNECTION_STRING is not configured")
@@ -32,19 +37,28 @@ class QueueService:
         """
         try:
             # Validate configuration
-            if not self.connection_string:
-                logger.error("Cannot send message: AZURE_STORAGE_CONNECTION_STRING is not configured")
-                return False
-            
             if not self.queue_name:
                 logger.error("Cannot send message: AZURE_QUEUE_NAME is not configured")
                 return False
             
             # Create queue client
-            queue_client = QueueClient.from_connection_string(
-                self.connection_string,
-                self.queue_name
-            )
+            # Prefer account_url + account_key (more robust than connection string and avoids base64 padding issues)
+            if self.queue_account_url and self.account_key:
+                queue_client = QueueClient(
+                    account_url=self.queue_account_url,
+                    queue_name=self.queue_name,
+                    credential=self.account_key,
+                )
+            elif self.connection_string:
+                queue_client = QueueClient.from_connection_string(
+                    self.connection_string,
+                    self.queue_name,
+                )
+            else:
+                logger.error(
+                    "Cannot send message: neither AZURE_STORAGE_ACCOUNT_NAME/AZURE_STORAGE_ACCOUNT_KEY nor AZURE_STORAGE_CONNECTION_STRING is configured"
+                )
+                return False
             
             # Convert message data to JSON string
             message_content = json.dumps(message_data)

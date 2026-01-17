@@ -3,7 +3,7 @@ from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPerm
 from sqlalchemy.orm import Session
 from src.shared.core.config import settings
 from src.shared.core.logger import get_logger
-from src.shared.models import ProcessingJob, Video
+from src.shared.models import ProcessingJob, Video, Clip
 import uuid
 from typing import Optional, Dict, Any
 
@@ -191,6 +191,54 @@ class VideoUploadService:
         except Exception as e:
             logger.error(f"Error getting processing status for video_id={video_id}: {str(e)}")
             raise
+
+    def get_clips_from_video_id(self, video_id: int, user_id: int, db: Session) -> Dict[str, Any]:
+        """
+        Get all clips for a given video ID.
+
+        Args:
+            video_id: ID of the video
+            user_id: Authenticated user id (used for ownership check)
+            db: Database session
+
+        Returns:
+            dict with video_id and list of clips
+
+        Raises:
+            ValueError: If video not found
+            PermissionError: If video does not belong to the user
+        """
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise ValueError(f"Video not found: video_id={video_id}")
+
+        if getattr(video, "user_id", None) is not None and video.user_id != user_id:
+            raise PermissionError("Access denied")
+
+        clips = (
+            db.query(Clip)
+            .filter(Clip.video_id == video_id)
+            .order_by(Clip.created_at.asc())
+            .all()
+        )
+
+        return {
+            "video_id": video_id,
+            "count": len(clips),
+            "clips": [
+                {
+                    "id": c.id,
+                    "job_id": c.job_id,
+                    "video_id": c.video_id,
+                    "clip_url": c.clip_url,
+                    "start_time_sec": c.start_time_sec,
+                    "end_time_sec": c.end_time_sec,
+                    "duration_sec": c.duration_sec,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in clips
+            ],
+        }
 
 
 # Singleton instance

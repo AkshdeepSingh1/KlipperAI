@@ -19,9 +19,10 @@ class Worker:
     """Background worker that processes jobs from Azure Queue"""
     
     def __init__(self):
-        self.queue_client = QueueClient.from_connection_string(
-            settings.AZURE_STORAGE_CONNECTION_STRING,
-            settings.AZURE_QUEUE_NAME
+        self.queue_client = QueueClient(
+            account_url=f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.queue.core.windows.net",
+            queue_name=settings.AZURE_QUEUE_NAME,
+            credential=settings.AZURE_STORAGE_ACCOUNT_KEY,
         )
         self.video_processor = VideoProcessor()
         self.running = True

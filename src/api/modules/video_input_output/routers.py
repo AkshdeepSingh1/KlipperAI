@@ -232,3 +232,27 @@ async def get_processing_status(
             status_code=500,
             detail=f"Failed to get processing status: {str(e)}"
         )
+
+
+@router.get("/getClipsFromVideoId")
+async def get_clips_from_video_id(
+    request: Request,
+    videoId: int = Query(..., description="Video ID"),
+    db: Session = Depends(get_db),
+):
+    """Get all clips for a given video ID."""
+    try:
+        user_id = request.state.user_id
+        result = video_upload_service.get_clips_from_video_id(
+            video_id=videoId,
+            user_id=user_id,
+            db=db,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get clips for videoId={videoId}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get clips: {str(e)}")
