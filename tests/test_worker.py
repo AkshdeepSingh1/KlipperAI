@@ -41,9 +41,9 @@ def test_video_processor():
     processor = VideoProcessor()
     
     # Test data - replace with actual values from your database
-    test_video_id = 1
-    test_blob_name = "test-video.mp4"
-    test_blob_url = "https://learningqueues.blob.core.windows.net/videos/test-video.mp4"
+    test_video_id = 9
+    test_blob_name = "20260117_074655_9e218018.mp4"
+    test_blob_url = "https://learningqueues.blob.core.windows.net/raw-videos/videos/1/20260117_074655_9e218018.mp4"
     test_user_id = 1
     
     logger.info(f"Processing test video:")

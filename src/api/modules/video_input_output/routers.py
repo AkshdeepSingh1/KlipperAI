@@ -133,7 +133,7 @@ async def verify_upload(
         logger.info(f"Verifying blob existence: {blob_name} for user_id={user_id}")
         
         # Verify blob exists in Azure Storage
-        exists = video_upload_service.verify_blob_exists(blob_name)
+        exists = video_upload_service.verify_blob_exists(blob_name, user_id=user_id)
         
         if not exists:
             return {
@@ -143,7 +143,7 @@ async def verify_upload(
             }
         
         # Get blob URL
-        blob_url = video_upload_service.get_blob_url(blob_name)
+        blob_url = video_upload_service.get_blob_url(blob_name, user_id=user_id)
         
         # Create video record in database
         video = Video(
@@ -184,4 +184,51 @@ async def verify_upload(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to verify upload: {str(e)}"
+        )
+
+
+@router.get("/processing-status/{video_id}")
+async def get_processing_status(
+    video_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the processing status for a video including progress percentage.
+    
+    Args:
+        video_id: ID of the video to check status for
+        request: Request object (contains authenticated user_id)
+        db: Database session
+        
+    Returns:
+        dict: Contains video_id, status, current_step, progress_percentage, and timestamps
+        
+    Raises:
+        HTTPException: If video not found or access denied
+    """
+    try:
+        user_id = request.state.user_id
+        logger.info(f"Getting processing status for video_id={video_id}, user_id={user_id}")
+        
+        result = video_upload_service.get_processing_status(video_id=video_id, db=db)
+        
+        # Optional: Verify user owns this video (security check)
+        # Uncomment if you want to restrict access to video owner only
+        # if result.get("user_id") and result["user_id"] != user_id:
+        #     raise HTTPException(status_code=403, detail="Access denied")
+        
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Video not found: {str(e)}")
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Failed to get processing status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get processing status: {str(e)}"
         )
