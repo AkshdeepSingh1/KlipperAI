@@ -8,7 +8,9 @@ from src.api.middleware.auth_middleware import AuthMiddleware
 from src.api.modules.video_input_output.routers import router as video_upload_router
 from src.api.modules.auth.routers import router as auth_router
 from src.api.modules.user.routers import router as user_router
+from dotenv import load_dotenv
 
+load_dotenv()
 # Configure application-wide logging
 configure_application_logging(level=settings.LOG_LEVEL, log_file=settings.LOG_FILE)
 
@@ -52,6 +54,7 @@ app.add_middleware(
 app.include_router(video_upload_router)
 app.include_router(auth_router)
 app.include_router(user_router)
+
 
 @app.get("/health", tags=["Root"])
 @app.get("/", tags=["Root"])
