@@ -6,7 +6,9 @@ from src.api.modules.video_input_output.services import video_upload_service
 from src.shared.core.logger import get_logger
 from src.shared.core.database import get_db
 from src.shared.services.queue_service import queue_service
+from src.shared.services.thumbnail_queue_service import thumbnail_queue_service
 from src.shared.models import Video
+from src.shared.models.enums import GenerateThumbnailProcess
 
 logger = get_logger(__name__)
 
@@ -169,13 +171,23 @@ async def verify_upload(
         if not queue_success:
             logger.warning(f"Failed to send queue message for video ID: {video.id}")
         
+        # Send message to thumbnail generation queue
+        thumbnail_queue_success = thumbnail_queue_service.send_thumbnail_generation_message(
+            entity_id=video.id,
+            process_type=GenerateThumbnailProcess.VIDEO_THUMBNAIL
+        )
+        
+        if not thumbnail_queue_success:
+            logger.warning(f"Failed to send thumbnail queue message for video ID: {video.id}")
+        
         return {
             "exists": True,
             "blob_name": blob_name,
             "video_id": video.id,
             "blob_url": blob_url,
             "queue_message_sent": queue_success,
-            "message": "Video uploaded successfully and processing initiated" if queue_success else "Video uploaded but processing queue failed"
+            "thumbnail_queue_message_sent": thumbnail_queue_success,
+            "message": "Video uploaded successfully and processing initiated" if queue_success and thumbnail_queue_success else "Video uploaded but one or more queue operations failed"
         }
             
     except Exception as e:
@@ -256,3 +268,41 @@ async def get_clips_from_video_id(
     except Exception as e:
         logger.error(f"Failed to get clips for videoId={videoId}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get clips: {str(e)}")
+
+
+@router.get("/get-user-videos")
+async def get_user_videos(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Get all videos for the authenticated user."""
+    try:
+        user_id = request.state.user_id
+        logger.info(f"Getting all videos for user_id={user_id}")
+        
+        # Query all videos for the user
+        videos = db.query(Video).filter(Video.user_id == user_id).all()
+        
+        # Convert to list of dictionaries
+        videos_data = []
+        for video in videos:
+            videos_data.append({
+                "id": video.id,
+                "user_id": video.user_id,
+                "blob_url": video.blob_url,
+                "duration_seconds": video.duration_seconds,
+                "created_at": video.created_at.isoformat() if video.created_at else None,
+                "updated_at": video.updated_at.isoformat() if video.updated_at else None
+            })
+        
+        return {
+            "videos": videos_data,
+            "count": len(videos_data)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get videos for user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get videos: {str(e)}")
+
+
+        # make a new api here please
