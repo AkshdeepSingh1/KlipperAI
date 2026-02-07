@@ -8,7 +8,8 @@ from src.shared.core.logger import get_logger
 from src.shared.core.database import get_db
 from src.shared.services.queue_service import queue_service
 from src.shared.services.thumbnail_queue_service import thumbnail_queue_service
-from src.shared.models import Video
+from src.shared.models.video import Video
+from src.shared.enums.processing_status import ProcessingStatus
 from src.shared.models.enums import GenerateThumbnailProcess
 
 logger = get_logger(__name__)
@@ -284,15 +285,25 @@ async def get_clips_from_video_id(
 @router.get("/get-user-videos")
 async def get_user_videos(
     request: Request,
+    isCompleted: bool = False,
     db: Session = Depends(get_db),
 ):
     """Get all videos for the authenticated user."""
     try:
         user_id = request.state.user_id
-        logger.info(f"Getting all videos for user_id={user_id}")
+        logger.info(f"Getting all videos for user_id={user_id}, isCompleted={isCompleted}")
         
-        # Query all videos for the user, ordered by created_at desc (latest first)
-        videos = db.query(Video).filter(Video.user_id == user_id).order_by(Video.created_at.desc()).all()
+        # Query videos for the user with filtering based on isCompleted parameter
+        if isCompleted:
+            videos = db.query(Video).filter(
+                Video.user_id == user_id,
+                Video.processing_status == "completed"
+            ).order_by(Video.created_at.desc()).all()
+        else:
+            videos = db.query(Video).filter(
+                Video.user_id == user_id,
+                Video.processing_status != "completed"
+            ).order_by(Video.created_at.desc()).all()
         
         # Convert to list of dictionaries
         videos_data = []
@@ -302,6 +313,7 @@ async def get_user_videos(
                 "user_id": video.user_id,
                 "blob_url": video.blob_url,
                 "thumbnail_url": video.thumbnail_url,
+                "processing_status": video.processing_status.value if video.processing_status else None,
                 "duration_seconds": video.duration_seconds,
                 "created_at": video.created_at.isoformat() if video.created_at else None
             })
