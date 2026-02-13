@@ -1,4 +1,3 @@
-import json
 import assemblyai as aai
 from src.shared.core.config import settings
 from src.shared.core.logger import get_logger
@@ -25,7 +24,7 @@ def transcribe_audio(file_path: str) -> Optional[dict]:
         )
 
         transcriber = aai.Transcriber()
-        transcript = transcriber.transcribe(file_path, config=config).json_response
+        transcript = transcriber.transcribe(file_path, config=config)
 
         if transcript.status == aai.TranscriptStatus.error:
             logger.error(f"Transcription failed: {transcript.error}")
@@ -34,15 +33,13 @@ def transcribe_audio(file_path: str) -> Optional[dict]:
         logger.error(f"Error transcribing video: {str(e)}")
         return None
 
-    logger.info(f"Transcription completed.")
-    if transcript:
-        try:
-            return {
-                "text": transcript.get("text"),
-                "words": transcript.get("words"),
-            }
-        except Exception as e:
-            logger.error(f"Error getting transcript JSON response: {str(e)}")
-            logger.error(f"Transcript type: {type(transcript)}")
-            logger.error(f"Transcript: {json.dumps(transcript, indent=4)}")
-            return None
+    logger.info("Transcription completed.")
+    try:
+        data = transcript.json_response
+        return {
+            "text": data.get("text"),
+            "words": data.get("words"),
+        }
+    except Exception as e:
+        logger.error(f"Error building transcript response: {str(e)}")
+        return None

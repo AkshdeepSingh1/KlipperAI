@@ -9,7 +9,7 @@ from src.shared.core.logger import get_logger
 from src.ai.assembly import transcribe_audio
 from src.ai.gpt import get_clips_from_video, Clips
 from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import TextClip, ColorClip
+from moviepy.video.VideoClip import TextClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
 
@@ -24,7 +24,6 @@ HIGHLIGHT_COLOR = "yellow"
 STROKE_COLOR = "black"
 STROKE_WIDTH = 3
 BOTTOM_MARGIN = 120
-BOX_OPACITY = 0.6
 MAX_WIDTH_RATIO = 0.8
 
 
@@ -34,31 +33,26 @@ def download_youtube_video(url: str, user_id: str, video_id: str) -> str:
     """
     logger.info(f"Starting download for URL: {url}")
 
-    # Ensure downloads directory exists
     download_dir = os.path.join("downloads", user_id, video_id)
     os.makedirs(download_dir, exist_ok=True)
 
-    # Configure yt-dlp options
     ydl_opts = {
         "format": "best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8][protocol!=http_dash_segments]/best[protocol!=m3u8_native][protocol!=m3u8][protocol!=http_dash_segments]",
         "format_sort": ["lang:en"],
         "outtmpl": os.path.join(download_dir, "video.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
-        "retries": 3,  # Retry failed downloads
-        "fragment_retries": 3,  # Retry failed fragments
+        "retries": 3,
+        "fragment_retries": 3,
         "ignoreerrors": False,
         "no_check_certificate": False,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info and download
             info = ydl.extract_info(url, download=True)
-            # Get the path of the downloaded file
             file_path = ydl.prepare_filename(info)
 
-            # Verify the file was actually downloaded and is not empty
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"Downloaded file not found: {file_path}")
 
@@ -183,17 +177,21 @@ def get_clips_from_transcript(user_id: str, video_id: str) -> Optional[Clips]:
     clips_data_path = os.path.join("downloads", user_id, video_id, "clips.json")
     with open(clips_data_path, "w") as f:
         json.dump(clips_data, f)
-    return clips_data_path
+    return clips_data
 
 
 def get_timestamps_from_clips(
-    user_id: str, video_id: str, clips: Clips
+    user_id: str, video_id: str
 ) -> Dict[str, List[Dict[str, Any]]]:
+    clips_path = os.path.join("downloads", user_id, video_id, "clips.json")
+    with open(clips_path, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+
     transcript_path = os.path.join("downloads", user_id, video_id, "transcript.json")
     with open(transcript_path, "r", encoding="utf-8") as f:
         transcript = json.load(f)
-
-        full_text = transcript["text"]
+    
+    full_text = transcript["text"]
     words = transcript["words"]
 
     spans = []
@@ -227,7 +225,8 @@ def get_timestamps_from_clips(
 
     results = []
 
-    for clip in clips:
+    for clip_d in clips:
+        clip = clip_d["clip_text"]
 
         matches = list(re.finditer(re.escape(clip.strip()), full_text, re.IGNORECASE))
 
@@ -265,11 +264,24 @@ def _cut_single_clip_moviepy(args) -> str:
     """Worker for cut_clips_from_video; must be at module level for multiprocessing."""
     video_path, start, end, output_path = args
 
+    if start is None or end is None:
+        raise ValueError(f"Missing timestamps: start={start}, end={end}")
+    # AssemblyAI and clips_timestamps.json use milliseconds; moviepy expects seconds
+    start = start / 1000.0
+    end = end / 1000.0
+
     if end <= start:
         raise ValueError(f"Invalid timestamps: {start} -> {end}")
     temp_audio = os.path.splitext(output_path)[0] + "_temp.m4a"
 
     with VideoFileClip(video_path) as video:
+        duration = video.duration
+        start = max(0.0, min(start, duration))
+        end = max(0.0, min(end, duration))
+        if end <= start:
+            raise ValueError(
+                f"Clip segment [{start}, {end}] is empty or invalid for duration {duration}"
+            )
         clip = video.subclipped(start, end)
 
         clip.write_videofile(
@@ -319,9 +331,16 @@ def font_size_for_video(video_w: int, video_h: int) -> int:
 
 
 def create_caption_clip(
-    text: str, video_w: int, video_h: int, start: float, end: float
+    text: str,
+    video_w: int,
+    video_h: int,
+    start: float,
+    end: float,
+    single_line: bool = True,
 ):
+    """Create a subtitle clip. If single_line is True, use full width so text stays on one line."""
     font_size = font_size_for_video(video_w, video_h)
+    width = video_w if single_line else int(video_w * MAX_WIDTH_RATIO)
 
     txt_clip = TextClip(
         text=text,
@@ -331,30 +350,18 @@ def create_caption_clip(
         stroke_color=STROKE_COLOR,
         stroke_width=STROKE_WIDTH,
         method="caption",
-        size=(int(video_w * MAX_WIDTH_RATIO), None),
+        size=(width, None),
         text_align="center",
     )
 
-    padding_x = max(12, font_size // 2)
-    padding_y = max(8, font_size // 3)
-
-    bg_width = txt_clip.w + padding_x
-    bg_height = txt_clip.h + padding_y
-
-    bg_clip = ColorClip(size=(bg_width, bg_height), color=(0, 0, 0)).with_opacity(
-        BOX_OPACITY
-    )
-
     anchor_y = int(video_h * 0.75)
-    pos_y = min(anchor_y, video_h - bg_height)
+    pos_y = min(anchor_y, video_h - txt_clip.h)
     pos_y = max(0, pos_y)
 
-    bg_clip = bg_clip.with_position(("center", pos_y))
-
-    txt_clip = txt_clip.with_position(("center", pos_y + (padding_y // 2)))
+    txt_clip = txt_clip.with_position(("center", pos_y))
 
     caption = (
-        CompositeVideoClip([bg_clip, txt_clip], size=(video_w, video_h))
+        CompositeVideoClip([txt_clip], size=(video_w, video_h))
         .with_start(start)
         .with_end(end)
     )
@@ -364,6 +371,41 @@ def create_caption_clip(
 
 def build_caption_text(words: List[Dict[str, Any]]) -> str:
     return " ".join([w["text"] for w in words])
+
+
+def _word_ends_sentence(word: Dict[str, Any]) -> bool:
+    """True if this word ends a sentence (line boundary)."""
+    text = (word.get("text") or "").strip()
+    return any(text.endswith(p) for p in (".", "?", "!"))
+
+
+def _chunk_words_for_subtitles(
+    words: List[Dict[str, Any]],
+    min_words: int = 3,
+    max_words: int = 5,
+) -> List[List[Dict[str, Any]]]:
+    """
+    Chunk words into segments of 3–5 words for subtitles.
+    Never spans across sentence boundaries: if the line is ending, we do not
+    pull in words from the next line to reach max_words.
+    """
+    if not words:
+        return []
+    segments: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+
+    for w in words:
+        current.append(w)
+        ends_sentence = _word_ends_sentence(w)
+        at_max = len(current) >= max_words
+        if ends_sentence or at_max:
+            if current:
+                segments.append(current)
+                current = []
+
+    if current:
+        segments.append(current)
+    return segments
 
 
 def add_subtitles_to_clips(
@@ -391,12 +433,26 @@ def add_subtitles_to_clips(
         video = VideoFileClip(video_path)
         video_w, video_h = video.size
         caption_clips = []
-        full_text = build_caption_text(clip_data["words"])
-        caption_clips.append(
-            create_caption_clip(
-                full_text, video_w, video_h, start=0, end=video.duration
+
+        clip_start_ms = clip_data["start"]
+        segments = _chunk_words_for_subtitles(clip_data["words"])
+
+        for seg in segments:
+            text = " ".join(w["text"] for w in seg)
+            start_ms = seg[0]["start"]
+            end_ms = seg[-1]["end"]
+            start_sec = (start_ms - clip_start_ms) / 1000.0
+            end_sec = (end_ms - clip_start_ms) / 1000.0
+            # Clamp to clip duration and skip if invalid
+            start_sec = max(0.0, min(start_sec, video.duration))
+            end_sec = max(0.0, min(end_sec, video.duration))
+            if end_sec <= start_sec:
+                continue
+            caption_clips.append(
+                create_caption_clip(
+                    text, video_w, video_h, start=start_sec, end=end_sec
+                )
             )
-        )
 
         if highlight_words:
             font_size = font_size_for_video(video_w, video_h)
@@ -410,10 +466,12 @@ def add_subtitles_to_clips(
                     stroke_color=STROKE_COLOR,
                     stroke_width=STROKE_WIDTH,
                 )
+                start_sec = (w["start"] - clip_start_ms) / 1000.0
+                end_sec = (w["end"] - clip_start_ms) / 1000.0
                 word_clip = (
                     word_clip.with_position(("center", int(video_h * 0.75)))
-                    .with_start(w["start"] - clip_data["start"])
-                    .with_end(w["end"] - clip_data["start"])
+                    .with_start(start_sec)
+                    .with_end(end_sec)
                 )
                 caption_clips.append(word_clip)
         final = CompositeVideoClip([video] + caption_clips)
