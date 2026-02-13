@@ -1,0 +1,22 @@
+services:
+  api:
+    image: kliper-backend-image
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-8000}:8000"
+    # restart: unless-stopped
+
+  worker:
+    image: kliper-worker-image
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    # restart: unless-stopped
+    depends_on:
+      - api

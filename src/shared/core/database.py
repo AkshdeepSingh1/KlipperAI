@@ -11,6 +11,7 @@ engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
     echo=False,
+    connect_args={"sslmode": "require"}
 )
 
 # Create SessionLocal class

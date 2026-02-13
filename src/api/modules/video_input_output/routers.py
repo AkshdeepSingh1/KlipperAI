@@ -162,8 +162,7 @@ async def verify_upload(
             user_id=user_id,
             blob_url=blob_url,
             duration_seconds=duration_seconds,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.utcnow()
         )
         
         db.add(video)
