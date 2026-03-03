@@ -10,6 +10,7 @@ class Clip(Base):
     job_id = Column(BigInteger, ForeignKey("processing_jobs.id", ondelete="CASCADE"), nullable=True)
     video_id = Column(BigInteger, ForeignKey("videos.id", ondelete="CASCADE"), nullable=True)
     clip_url = Column(Text, unique=True, nullable=False)
+    thumbnail_url = Column(Text, nullable=True)
     start_time_sec = Column(Float, nullable=True)
     end_time_sec = Column(Float, nullable=True)
     duration_sec = Column(Float, nullable=True)

@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from src.shared.core.config import settings
 from src.shared.core.logger import get_logger
 from src.shared.models import ProcessingJob, Video, Clip
+from src.shared.enums import ProcessingStatus, VideoFilterStatus
 import uuid
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = get_logger(__name__)
 
@@ -181,6 +182,7 @@ class VideoUploadService:
                 "status": job.status.value if hasattr(job.status, 'value') else str(job.status),
                 "current_step": job.current_step,
                 "progress_percentage": float(job.progress_percentage) if job.progress_percentage else 0.0,
+                "thumbnail_url": video.thumbnail_url,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message
@@ -231,6 +233,7 @@ class VideoUploadService:
                     "job_id": c.job_id,
                     "video_id": c.video_id,
                     "clip_url": c.clip_url,
+                    "thumbnail_url": c.thumbnail_url,
                     "start_time_sec": c.start_time_sec,
                     "end_time_sec": c.end_time_sec,
                     "duration_sec": c.duration_sec,
@@ -239,6 +242,55 @@ class VideoUploadService:
                 for c in clips
             ],
         }
+
+
+    def get_user_videos(
+        self, user_id: int, filter_status: VideoFilterStatus, db: Session
+    ) -> Dict[str, Any]:
+        """
+        Get all videos for the authenticated user with filtering.
+
+        Args:
+            user_id: ID of the user
+            filter_status: Filter status (INCOMPLETE, COMPLETED, ALL)
+            db: Database session
+
+        Returns:
+            dict: Contains list of videos and count
+        """
+        query = db.query(Video).filter(Video.user_id == user_id)
+
+        if filter_status == VideoFilterStatus.COMPLETED:
+            query = query.filter(Video.processing_status == ProcessingStatus.COMPLETED)
+        elif filter_status == VideoFilterStatus.INCOMPLETE:
+            query = query.filter(Video.processing_status != ProcessingStatus.COMPLETED)
+        # For VideoFilterStatus.ALL, we don't add any additional filter
+
+        videos = query.order_by(Video.created_at.desc()).all()
+
+        videos_data = []
+        for video in videos:
+            videos_data.append(
+                {
+                    "id": video.id,
+                    "user_id": video.user_id,
+                    "blob_url": video.blob_url,
+                    "thumbnail_url": video.thumbnail_url,
+                    "processing_status": (
+                        video.processing_status.value
+                        if hasattr(video.processing_status, "value")
+                        else str(video.processing_status)
+                    )
+                    if video.processing_status
+                    else None,
+                    "duration_seconds": video.duration_seconds,
+                    "created_at": video.created_at.isoformat()
+                    if video.created_at
+                    else None,
+                }
+            )
+
+        return {"videos": videos_data, "count": len(videos_data)}
 
 
 # Singleton instance

@@ -10,6 +10,7 @@ from src.shared.services.queue_service import queue_service
 from src.shared.services.thumbnail_queue_service import thumbnail_queue_service
 from src.shared.models.video import Video
 from src.shared.enums.processing_status import ProcessingStatus
+from src.shared.enums.video_filter import VideoFilterStatus
 from src.shared.models.enums import GenerateThumbnailProcess
 
 logger = get_logger(__name__)
@@ -284,47 +285,61 @@ async def get_clips_from_video_id(
 @router.get("/get-user-videos")
 async def get_user_videos(
     request: Request,
-    isCompleted: bool = False,
+    filterStatus: VideoFilterStatus = Query(
+        default=VideoFilterStatus.INCOMPLETE,
+        description="Filter status: 0 for incomplete, 1 for completed, 2 for all",
+    ),
     db: Session = Depends(get_db),
 ):
     """Get all videos for the authenticated user."""
     try:
         user_id = request.state.user_id
-        logger.info(f"Getting all videos for user_id={user_id}, isCompleted={isCompleted}")
-        
-        # Query videos for the user with filtering based on isCompleted parameter
-        if isCompleted:
-            videos = db.query(Video).filter(
-                Video.user_id == user_id,
-                Video.processing_status == "completed"
-            ).order_by(Video.created_at.desc()).all()
-        else:
-            videos = db.query(Video).filter(
-                Video.user_id == user_id,
-                Video.processing_status != "completed"
-            ).order_by(Video.created_at.desc()).all()
-        
-        # Convert to list of dictionaries
-        videos_data = []
-        for video in videos:
-            videos_data.append({
-                "id": video.id,
-                "user_id": video.user_id,
-                "blob_url": video.blob_url,
-                "thumbnail_url": video.thumbnail_url,
-                "processing_status": video.processing_status.value if video.processing_status else None,
-                "duration_seconds": video.duration_seconds,
-                "created_at": video.created_at.isoformat() if video.created_at else None
-            })
-        
-        return {
-            "videos": videos_data,
-            "count": len(videos_data)
-        }
-        
+        logger.info(
+            f"Getting videos for user_id={user_id}, filterStatus={filterStatus}"
+        )
+
+        result = video_upload_service.get_user_videos(
+            user_id=user_id, filter_status=filterStatus, db=db
+        )
+        return result
+
     except Exception as e:
         logger.error(f"Failed to get videos for user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get videos: {str(e)}")
 
 
-        # make a new api here please
+@router.get("/getClipById/{clip_id}")
+async def get_clip_by_id(
+    clip_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Get a single clip by its ID."""
+    try:
+        user_id = request.state.user_id
+        from src.shared.models import Clip, Video
+        clip = db.query(Clip).filter(Clip.id == clip_id).first()
+        if not clip:
+            raise HTTPException(status_code=404, detail=f"Clip not found: clip_id={clip_id}")
+
+        # Verify ownership via video
+        video = db.query(Video).filter(Video.id == clip.video_id).first()
+        if video and video.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        return {
+            "id": clip.id,
+            "job_id": clip.job_id,
+            "video_id": clip.video_id,
+            "clip_url": clip.clip_url,
+            "thumbnail_url": clip.thumbnail_url,
+            "start_time_sec": clip.start_time_sec,
+            "end_time_sec": clip.end_time_sec,
+            "duration_sec": clip.duration_sec,
+            "created_at": clip.created_at.isoformat() if clip.created_at else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get clip for clip_id={clip_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get clip: {str(e)}")
