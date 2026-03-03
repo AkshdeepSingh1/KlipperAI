@@ -2,13 +2,13 @@
 Video Processor Handler
 Handles video processing jobs from the queue
 """
-import importlib
 import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Iterable, List
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.fx.Crop import Crop
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -20,6 +20,15 @@ from src.shared.models.enums import GenerateThumbnailProcess
 from src.shared.services.clip_storage_service import clip_storage_service
 from src.shared.services.progress_service import update_job_progress
 from src.shared.services.thumbnail_queue_service import thumbnail_queue_service
+from src.ai.service import (
+    download_video_from_azure,
+    get_audio_from_video,
+    generate_transcript,
+    get_clips_from_transcript,
+    get_timestamps_from_clips,
+    cut_clips_from_video,
+    add_subtitles_to_clips,
+)
 
 logger = get_logger(__name__)
 
@@ -60,51 +69,44 @@ class VideoProcessor:
             job_id = job.id
             update_job_progress(job_id, step="queued", progress=10.00)
 
-            ai_service = importlib.import_module("src.ai.service")
             user_str = str(user_id) if user_id is not None else "unknown"
             video_str = str(video_id)
 
-            def require_callable(name: str):
-                func = getattr(ai_service, name, None)
-                if not callable(func):
-                    raise AttributeError(f"{name} is not available in src.ai.service")
-                return func
-
             # 1. Ensure raw video is present locally
-            require_callable("download_video_from_azure")(user_str, video_str, blob_url)
+            download_video_from_azure(user_str, video_str, blob_url)
 
             # 2. Audio + transcript generation
             update_job_progress(job_id, step="transcription", progress=40.00)
-            audio_path = require_callable("get_audio_from_video")(user_str, video_str)
-            transcript_path = require_callable("generate_transcript")(user_str, video_str)
+            audio_path = get_audio_from_video(user_str, video_str)
+            transcript_path = generate_transcript(user_str, video_str)
 
             if not audio_path or not transcript_path:
                 raise RuntimeError("Failed to generate audio/transcript artifacts")
 
             # 3. LLM + clip discovery
             update_job_progress(job_id, step="llm", progress=55.00)
-            clips_payload = require_callable("get_clips_from_transcript")(
-                user_str, video_str
-            )
+            clips_payload = get_clips_from_transcript(user_str, video_str)
             if not clips_payload:
                 raise RuntimeError("No clips returned from transcript analysis")
 
-            timestamps = require_callable("get_timestamps_from_clips")(user_str, video_str)
+            timestamps = get_timestamps_from_clips(user_str, video_str)
             if not timestamps:
                 raise RuntimeError("No timestamps generated for clips")
 
-            # 4. Clip cutting
-            update_job_progress(job_id, step="cutting", progress=85.00)
-            clips = require_callable("cut_clips_from_video")(
-                user_str, video_str, timestamps
-            )
+            # 4. Clip cutting with 9:16 aspect ratio
+            update_job_progress(job_id, step="clip_cutting", progress=70.00)
+            clips = cut_clips_from_video(user_str, video_str, timestamps)
+            if not clips:
+                raise RuntimeError("Failed to cut clips from video")
+            
+            # Crop clips to 9:16 aspect ratio
+            clips = self._crop_clips_to_9_16(clips, user_str, video_str)
 
-            # 5. Optional subtitles
-            subtitles_enabled = getattr(ai_service, "subtitles_enabled", lambda: True)
-            if subtitles_enabled():
-                add_subtitles = require_callable("add_subtitles_to_clips")
-                add_subtitles(user_str, video_str)
-                update_job_progress(job_id, step="subtitles", progress=90.00)
+            # # 5. Optional subtitles
+            # if subtitles_enabled():
+            #     add_subtitles_to_clips(user_str, video_str)
+                
+            update_job_progress(job_id, step="subtitles", progress=90.00)
 
             # 6. Upload generated clips + persist metadata
             clip_records = self._upload_and_record_clips(
@@ -217,6 +219,91 @@ class VideoProcessor:
             f"Failed to acquire processing lock for video_id={video_id} after retries."
         )
         return None
+
+    def _crop_clips_to_9_16(self, clips: List[str], user_id: str, video_id: str) -> List[str]:
+        """
+        Crop video clips to 9:16 aspect ratio (vertical format).
+
+        Writes the cropped file in-place (replaces the original) so that
+        downstream upload paths remain unchanged.
+
+        Args:
+            clips: List of clip file paths
+            user_id: User ID for path construction
+            video_id: Video ID for path construction
+
+        Returns:
+            List of cropped clip file paths (same paths as input, overwritten)
+        """
+        cropped_clips = []
+
+        for i, clip_path in enumerate(clips):
+            clip_file = Path(clip_path)
+            output_dir = clip_file.parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Temporary file next to the original; renamed over it on success
+            temp_cropped_path = output_dir / f"{clip_file.stem}_cropped.mp4"
+            temp_audio_path = output_dir / f"temp_audio_{i}.m4a"
+
+            logger.info(f"Cropping clip {i+1}/{len(clips)} to 9:16 aspect ratio: {clip_path}")
+
+            clip = None
+            cropped_clip = None
+            try:
+                clip = VideoFileClip(clip_path)
+
+                w, h = clip.size
+                logger.info(f"Original clip dimensions: {w}x{h}")
+
+                # Target 9:16 — keep as much content as possible
+                target_width = int(h * 9 / 16)
+
+                if target_width > w:
+                    # Source is narrower than 9:16 → crop height to fit
+                    target_height = int(w * 16 / 9)
+                    y_center = h // 2
+                    y1 = max(0, y_center - target_height // 2)
+                    y2 = min(h, y1 + target_height)
+                    cropped_clip = clip.with_effects([Crop(x1=0, y1=y1, x2=w, y2=y2)])
+                    logger.info(f"Cropped height to {y2-y1}px → {w}x{y2-y1}")
+                else:
+                    # Standard landscape → crop width to 9:16
+                    x_center = w // 2
+                    x1 = max(0, x_center - target_width // 2)
+                    x2 = min(w, x1 + target_width)
+                    cropped_clip = clip.with_effects([Crop(x1=x1, y1=0, x2=x2, y2=h)])
+                    logger.info(f"Cropped width to {x2-x1}px → {x2-x1}x{h}")
+
+                cropped_clip.write_videofile(
+                    str(temp_cropped_path),
+                    codec="libx264",
+                    audio_codec="aac",
+                    temp_audiofile=str(temp_audio_path),
+                    remove_temp=True,
+                )
+
+            finally:
+                # Always release file handles
+                if cropped_clip is not None:
+                    cropped_clip.close()
+                if clip is not None:
+                    clip.close()
+
+            # Replace original with cropped version
+            if temp_cropped_path.exists():
+                clip_file.unlink(missing_ok=True)
+                temp_cropped_path.rename(clip_file)
+                logger.info(f"Replaced original with cropped clip: {clip_file}")
+            else:
+                raise RuntimeError(
+                    f"Cropped file was not created at {temp_cropped_path}"
+                )
+
+            cropped_clips.append(str(clip_file))
+
+        logger.info(f"Cropped {len(cropped_clips)} clips to 9:16 aspect ratio")
+        return cropped_clips
 
     @staticmethod
     def _upload_and_record_clips(
