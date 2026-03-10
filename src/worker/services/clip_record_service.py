@@ -2,7 +2,9 @@
 Clip Record Service
 Uploads processed clips to Azure Blob Storage and persists Clip records to the database.
 """
-from typing import Iterable, List
+import json
+import os
+from typing import Any, Iterable, List
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +23,7 @@ def upload_and_record_clips(
     video_id: str,
     job_id: int,
     db: Session,
-    timestamps: List[dict] = None,
+    timestamps: Any = None,
 ) -> List[Clip]:
     """
     Upload each clip to Azure Blob Storage, create a Clip DB record,
@@ -33,8 +35,11 @@ def upload_and_record_clips(
         video_id: Video identifier
         job_id: Processing job ID
         db: Active SQLAlchemy session
-        timestamps: Optional list of timestamp dicts for each clip
+        timestamps: List of timestamp dicts or path to JSON file
     """
+    if isinstance(timestamps, str):
+        with open(timestamps, "r", encoding="utf-8") as f:
+            timestamps = json.load(f)
     uploaded_clips: List[Clip] = []
 
     for idx, clip_path in enumerate(clips):

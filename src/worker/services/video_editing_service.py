@@ -105,6 +105,37 @@ def cut_clips(user_id: str, video_id: str, timestamps: Any) -> List[str]:
     return results
 
 
+def get_or_cut_clips(user_id: str, video_id: str) -> List[str]:
+    """
+    Checks for existing clips; if not found, cuts new clips from the video.
+
+    Args:
+        user_id: User identifier for path construction.
+        video_id: Video identifier for path construction.
+
+    Returns:
+        List of file paths to the generated or existing clips.
+    """
+    clips_output_dir = os.path.join("downloads", user_id, video_id, "clips")
+    existing_clips = [
+        os.path.join(clips_output_dir, f)
+        for f in os.listdir(clips_output_dir)
+        if f.endswith(".mp4")
+    ] if os.path.exists(clips_output_dir) else []
+
+    if existing_clips:
+        logger.info("Clips already exist, skipping cutting.")
+        return existing_clips
+    else:
+        clips_timestamps_path = os.path.join(
+            "downloads", user_id, video_id, "clips_timestamps.json"
+        )
+        clip_path_list = cut_clips(user_id, video_id, clips_timestamps_path)
+        if not clip_path_list:
+            raise RuntimeError("Failed to cut clips from video")
+        return clip_path_list
+
+
 # ── Crop to 9:16 ─────────────────────────────────────────────────────
 
 def crop_clips_to_9_16(clips: List[str]) -> List[str]:

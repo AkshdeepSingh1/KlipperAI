@@ -14,22 +14,33 @@ from src.shared.core.logger import get_logger
 logger = get_logger(__name__)
 
 
-def discover_clips(user_id: str, video_id: str) -> Optional[List[Dict[str, Any]]]:
+def discover_clips(user_id: str, video_id: str) -> bool:
     """
     Identify clip-worthy segments from a transcript using LLM.
+    Saves the results to 'clips.json' in the video's download directory.
 
     Args:
         user_id: User identifier for path construction
         video_id: Video identifier for path construction
 
     Returns:
-        List of clip data dicts with 'clip_text' keys
+        True if clips were successfully discovered and saved, False otherwise.
     """
+    clips_data_path = os.path.join("downloads", user_id, video_id, "clips.json")
+
+    # Checkpoint: skip LLM call if clips already discovered
+    if os.path.exists(clips_data_path) and os.path.getsize(clips_data_path) > 0:
+        logger.info(f"Clips already exist at {clips_data_path}, skipping discovery")
+        return True
+
     transcript_path = os.path.join("downloads", user_id, video_id, "transcript.json")
     with open(transcript_path, "r") as f:
         transcript = json.load(f)
 
     clips = get_clips_from_video(transcript["text"])
+    if not clips or not clips.clips:
+        return False
+
     clips_data = []
     for clip in clips.clips:
         clips_data.append(
@@ -40,23 +51,33 @@ def discover_clips(user_id: str, video_id: str) -> Optional[List[Dict[str, Any]]
     clips_data_path = os.path.join("downloads", user_id, video_id, "clips.json")
     with open(clips_data_path, "w") as f:
         json.dump(clips_data, f)
-    return clips_data
+    return True
 
 
 def resolve_timestamps(
     user_id: str, video_id: str
-) -> List[Dict[str, Any]]:
+) -> bool:
     """
     Resolve precise word-level timestamps for discovered clips
     by matching clip text against the transcript.
+    Saves the results to 'clips_timestamps.json'.
 
     Args:
         user_id: User identifier for path construction
         video_id: Video identifier for path construction
 
     Returns:
-        List of dicts with 'text', 'start', 'end', 'words' keys
+        True if timestamps were successfully resolved and saved, False otherwise.
     """
+    clips_timestamps_path = os.path.join(
+        "downloads", user_id, video_id, "clips_timestamps.json"
+    )
+
+    # Checkpoint: skip timestamp resolution if already done
+    if os.path.exists(clips_timestamps_path) and os.path.getsize(clips_timestamps_path) > 0:
+        logger.info(f"Timestamps already exist at {clips_timestamps_path}, skipping resolution")
+        return True
+
     clips_path = os.path.join("downloads", user_id, video_id, "clips.json")
     with open(clips_path, "r", encoding="utf-8") as f:
         clips = json.load(f)
@@ -126,9 +147,12 @@ def resolve_timestamps(
 
         results.append(result)
 
+    if not results:
+        return False
+
     clips_timestamps_path = os.path.join(
         "downloads", user_id, video_id, "clips_timestamps.json"
     )
     with open(clips_timestamps_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=4)
-    return results
+    return True

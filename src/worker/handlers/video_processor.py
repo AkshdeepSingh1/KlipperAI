@@ -6,6 +6,7 @@ This is a pure orchestrator — all business logic lives in dedicated services
 under src/worker/services/. Swap any service implementation and this file
 stays unchanged.
 """
+import os
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -20,9 +21,11 @@ from src.worker.services.video_download_service import download_from_azure
 from src.worker.services.audio_service import extract_audio
 from src.worker.services.transcript_service import generate_transcript
 from src.worker.services.clip_discovery_service import discover_clips, resolve_timestamps
-from src.worker.services.video_editing_service import cut_clips, crop_clips_to_9_16
+from src.worker.services.video_editing_service import cut_clips
+from src.worker.services.smart_crop_service import smart_crop_clip
 from src.worker.services.clip_record_service import upload_and_record_clips
 from src.worker.services.file_cleanup_service import cleanup_downloads
+from src.worker.services.video_editing_service import get_or_cut_clips
 
 logger = get_logger(__name__)
 
@@ -61,61 +64,66 @@ class VideoProcessor:
                 return
 
             job_id = job.id
-            update_job_progress(job_id, step="queued", progress=10.00)
+            update_job_progress(job_id, step="queued", progress=3.00)
 
             user_str = str(user_id) if user_id is not None else "unknown"
             video_str = str(video_id)
 
             # 2. Download raw video
             download_from_azure(user_str, video_str, blob_url)
+            update_job_progress(job_id, step="audio_extraction", progress=10.00)
 
-            # 3. Audio + transcript generation
-            update_job_progress(job_id, step="transcription", progress=40.00)
+            # 3. Audio extraction
             audio_path = extract_audio(user_str, video_str)
-            transcript_path = generate_transcript(user_str, video_str)
+            update_job_progress(job_id, step="transcript_generation", progress=13.00)
 
+            #4 transcript generation
+            transcript_path = generate_transcript(user_str, video_str)
             if not audio_path or not transcript_path:
                 raise RuntimeError("Failed to generate audio/transcript artifacts")
+            update_job_progress(job_id, step="LLM", progress=25.00)
 
-            # 4. LLM clip discovery
-            update_job_progress(job_id, step="llm", progress=55.00)
-            clips_payload = discover_clips(user_str, video_str)
-            if not clips_payload:
+            # 5. LLM clip discovery
+            success = discover_clips(user_str, video_str)
+            if not success:
                 raise RuntimeError("No clips returned from transcript analysis")
+            update_job_progress(job_id, step="resolving_timestamps", progress=45.00)
 
-            timestamps = resolve_timestamps(user_str, video_str)
-            if not timestamps:
+            #6. Resolve timestamps
+            success = resolve_timestamps(user_str, video_str)
+            if not success:
                 raise RuntimeError("No timestamps generated for clips")
+            update_job_progress(job_id, step="cutting_clips", progress=50.00)
 
-            # 5. Cut clips + crop to 9:16
-            update_job_progress(job_id, step="clip_cutting", progress=70.00)
-            clips = cut_clips(user_str, video_str, timestamps)
-            if not clips:
-                raise RuntimeError("Failed to cut clips from video")
+            # 7. Cut clips 
+            clip_path_list = get_or_cut_clips(user_str, video_str)
+            update_job_progress(job_id, step="smart_clip_cropping", progress=60.00)
 
-            clips = crop_clips_to_9_16(clips)
+            # 8. Smart crop clips 
+            clip_path_list = [smart_crop_clip(clip_path) for clip_path in clip_path_list]
+            update_job_progress(job_id, step="adding_subtitles", progress=70.00)
 
-            # 6. (Optional) Subtitles — uncomment when ready
+            # 9. (Optional) Subtitles — uncomment when ready
             # from src.worker.services.video_editing_service import add_subtitles
             # add_subtitles(user_str, video_str)
 
             update_job_progress(job_id, step="subtitles", progress=90.00)
 
-            # 7. Upload clips + persist DB records
+            # 10. Upload clips + persist DB records
             clip_records = upload_and_record_clips(
-                clips=clips,
+                clips=clip_path_list,
                 user_id=user_str,
                 video_id=video_str,
                 job_id=job_id,
                 db=db,
-                timestamps=timestamps,
+                timestamps=clips_timestamps_path,
             )
             logger.info(f"Uploaded {len(clip_records)} clips for video_id={video_id}")
 
-            # 8. Cleanup local workspace
-            cleanup_downloads(user_str, video_str)
-
+            # 11. Cleanup local workspace
+            # cleanup_downloads(user_str, video_str)
             update_job_progress(job_id, step="done", progress=100.00)
+
             job.status = ProcessingStatus.COMPLETED
             job.completed_at = datetime.utcnow()
             db.commit()

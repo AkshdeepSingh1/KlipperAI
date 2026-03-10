@@ -81,6 +81,12 @@ def download_from_azure(user_id: str, video_id: str, link: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     dest_path = os.path.join("downloads", user_id, video_id, "video.mp4")
+
+    # Checkpoint: skip download if video already exists
+    if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+        logger.info(f"Video already exists at {dest_path}, skipping download")
+        return
+
     query = parsed.query or ""
     qs = parse_qs(query)
     has_sas = ("sig" in qs) or ("sv" in qs) or ("se" in qs and "sp" in qs)

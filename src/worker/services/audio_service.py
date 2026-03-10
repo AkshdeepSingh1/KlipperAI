@@ -35,6 +35,12 @@ def extract_audio(user_id: str, video_id: str) -> Optional[str]:
         raise FileNotFoundError(error_msg)
 
     audio_path = os.path.join("downloads", user_id, video_id, "audio.mp3")
+
+    # Checkpoint: skip extraction if audio already exists
+    if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+        logger.info(f"Audio already exists at {audio_path}, skipping extraction")
+        return audio_path
+
     logger.info(f"Extracting audio from {video_path} to {audio_path}")
 
     try:

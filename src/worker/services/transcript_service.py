@@ -27,6 +27,13 @@ def generate_transcript(user_id: str, video_id: str) -> Optional[str]:
         Exception: If transcription fails
     """
     audio_path = os.path.join("downloads", user_id, video_id, "audio.mp3")
+    transcript_path = os.path.join("downloads", user_id, video_id, "transcript.json")
+
+    # Checkpoint: skip transcription if transcript already exists
+    if os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 0:
+        logger.info(f"Transcript already exists at {transcript_path}, skipping transcription")
+        return transcript_path
+
     transcript = transcribe_audio(audio_path)
 
     if transcript:
