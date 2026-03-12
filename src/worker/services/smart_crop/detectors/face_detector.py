@@ -16,7 +16,14 @@ class FaceDetector(BaseDetector):
     Face detector using MediaPipe.
     """
 
-    def __init__(self, model_path: str = "src/worker/services/models/face_detector.tflite", confidence: float = 0.3):
+    def __init__(self, model_path: str = None, confidence: float = 0.3):
+        if model_path is None:
+            # Update default path to new structure
+            model_path = os.path.join(
+                os.path.dirname(__file__), 
+                "../../models/face_detection/face_detector.tflite"
+            )
+        
         self.model_path = model_path
         self.confidence = confidence
         self.detector = None

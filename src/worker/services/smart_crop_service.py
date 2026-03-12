@@ -195,7 +195,7 @@ def smart_crop_clip(input_path: str) -> str:
         # Initialize Smart Crop Engine
         detectors = [
             FaceDetector(),
-            TextDetector()
+            TextDetector(backend="east")  # Use OpenCV EAST by default
         ]
         engine = SmartCropEngine(detectors, frame_sample_interval=FRAME_SAMPLE_INTERVAL)
 

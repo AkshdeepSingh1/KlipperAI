@@ -29,7 +29,7 @@ def test_smart_crop_pipeline():
     # 2. Initialize Engine
     detectors = [
         FaceDetector(),
-        TextDetector()
+        TextDetector(backend="east")
     ]
     engine = SmartCropEngine(detectors, frame_sample_interval=0.5)
     
