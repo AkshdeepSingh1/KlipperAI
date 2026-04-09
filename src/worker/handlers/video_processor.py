@@ -25,7 +25,7 @@ from src.worker.services.video_editing_service import cut_clips
 from src.worker.services.smart_crop_service import smart_crop_clip
 from src.worker.services.clip_record_service import upload_and_record_clips
 from src.worker.services.file_cleanup_service import cleanup_downloads
-from src.worker.services.video_editing_service import get_or_cut_clips
+from src.worker.services.video_editing_service import get_or_cut_clips, add_subtitles
 
 logger = get_logger(__name__)
 
@@ -100,13 +100,11 @@ class VideoProcessor:
             update_job_progress(job_id, step="smart_clip_cropping", progress=60.00)
 
             # 8. Smart crop clips 
-            clip_path_list = [smart_crop_clip(clip_path) for clip_path in clip_path_list]
-            update_job_progress(job_id, step="adding_subtitles", progress=70.00)
+            # clip_path_list = [smart_crop_clip(clip_path) for clip_path in clip_path_list]
+            # update_job_progress(job_id, step="adding_subtitles", progress=70.00)
 
-            # 9. (Optional) Subtitles — uncomment when ready
-            # from src.worker.services.video_editing_service import add_subtitles
-            # add_subtitles(user_str, video_str)
-
+            # 9. Subtitle engine — burn styled captions onto clips
+            add_subtitles(user_str, video_str, subtitle_style="TIKTOK_BOLD")
             update_job_progress(job_id, step="subtitles", progress=90.00)
 
             # 10. Upload clips + persist DB records

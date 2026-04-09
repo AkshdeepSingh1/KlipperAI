@@ -5,28 +5,16 @@ All video manipulation — cutting clips, cropping to aspect ratios, adding subt
 import os
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import TextClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.video.fx.Crop import Crop
 
 from src.shared.core.logger import get_logger
+from src.worker.services.subtitles import SubtitleEngine, SubtitleStyleRegistry
 
 logger = get_logger(__name__)
-
-# ── Subtitle constants ──────────────────────────────────────────────
-FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-FONT_SIZE_MIN = 14
-FONT_SIZE_MAX = 42
-FONT_SIZE_RATIO = 0.045
-TEXT_COLOR = "white"
-HIGHLIGHT_COLOR = "yellow"
-STROKE_COLOR = "black"
-STROKE_WIDTH = 3
-BOTTOM_MARGIN = 120
-MAX_WIDTH_RATIO = 0.8
 
 
 # ── Clip cutting ─────────────────────────────────────────────────────
@@ -220,105 +208,36 @@ def crop_clips_to_9_16(clips: List[str]) -> List[str]:
 
 # ── Subtitles ────────────────────────────────────────────────────────
 
-def _font_size_for_video(video_w: int, video_h: int) -> int:
-    """Compute subtitle font size from video dimensions (shorter side)."""
-    short_side = min(video_w, video_h)
-    size = max(FONT_SIZE_MIN, min(FONT_SIZE_MAX, int(short_side * FONT_SIZE_RATIO)))
-    return size
-
-
-def _create_caption_clip(
-    text: str,
-    video_w: int,
-    video_h: int,
-    start: float,
-    end: float,
-    single_line: bool = True,
-):
-    """Create a subtitle clip. If single_line is True, use full width so text stays on one line."""
-    font_size = _font_size_for_video(video_w, video_h)
-    width = video_w if single_line else int(video_w * MAX_WIDTH_RATIO)
-
-    txt_clip = TextClip(
-        text=text,
-        font=FONT,
-        font_size=font_size,
-        color=TEXT_COLOR,
-        stroke_color=STROKE_COLOR,
-        stroke_width=STROKE_WIDTH,
-        method="caption",
-        size=(width, None),
-        text_align="center",
-    )
-
-    anchor_y = int(video_h * 0.75)
-    pos_y = min(anchor_y, video_h - txt_clip.h)
-    pos_y = max(0, pos_y)
-
-    txt_clip = txt_clip.with_position(("center", pos_y))
-
-    caption = (
-        CompositeVideoClip([txt_clip], size=(video_w, video_h))
-        .with_start(start)
-        .with_end(end)
-    )
-
-    return caption
-
-
-def _word_ends_sentence(word: Dict[str, Any]) -> bool:
-    """True if this word ends a sentence (line boundary)."""
-    text = (word.get("text") or "").strip()
-    return any(text.endswith(p) for p in (".", "?", "!"))
-
-
-def _chunk_words_for_subtitles(
-    words: List[Dict[str, Any]],
-    min_words: int = 3,
-    max_words: int = 5,
-) -> List[List[Dict[str, Any]]]:
-    """
-    Chunk words into segments of 3–5 words for subtitles.
-    Never spans across sentence boundaries.
-    """
-    if not words:
-        return []
-    segments: List[List[Dict[str, Any]]] = []
-    current: List[Dict[str, Any]] = []
-
-    for w in words:
-        current.append(w)
-        ends_sentence = _word_ends_sentence(w)
-        at_max = len(current) >= max_words
-        if ends_sentence or at_max:
-            if current:
-                segments.append(current)
-                current = []
-
-    if current:
-        segments.append(current)
-    return segments
-
-
 def add_subtitles(
-    user_id: str, video_id: str, highlight_words: bool = False
+    user_id: str,
+    video_id: str,
+    subtitle_style: str = "TIKTOK_BOLD",
 ) -> None:
     """
-    Burn subtitles onto video clips.
+    Burn subtitles onto video clips using the modular SubtitleEngine.
 
     Reads clip timestamps and corresponding clip files, renders word-level
-    captions, and writes subtitled versions to a separate folder.
+    captions via the configured style, and writes subtitled versions to a
+    separate folder.
 
     Args:
-        user_id: User identifier for path construction
-        video_id: Video identifier for path construction
-        highlight_words: Whether to add word-level highlight overlay
+        user_id:        User identifier for path construction.
+        video_id:       Video identifier for path construction.
+        subtitle_style: Name of a predefined style from SubtitleStyles
+                        (e.g. "TIKTOK_BOLD", "MINIMAL", "CINEMATIC").
+        highlight_words: Whether to add word-level highlight overlay.
     """
+    # ── resolve style & create engine ────────────────────────────────
+    style = SubtitleStyleRegistry.get(subtitle_style)
+    engine = SubtitleEngine(style)
+
+    # ── load data ────────────────────────────────────────────────────
     clips_timestamps_path = os.path.join(
         "downloads", user_id, video_id, "clips_timestamps.json"
     )
     with open(clips_timestamps_path, "r", encoding="utf-8") as f:
         clips_data = json.load(f)
+
     clips_folder_path = os.path.join("downloads", user_id, video_id, "clips")
     output_folder = os.path.join("downloads", user_id, video_id, "clips_with_subtitles")
     os.makedirs(output_folder, exist_ok=True)
@@ -330,56 +249,27 @@ def add_subtitles(
     if len(clip_files) != len(clips_data):
         raise ValueError("Mismatch: number of clips ≠ timestamp entries")
 
+    # ── process each clip ────────────────────────────────────────────
     for idx, (clip_file, clip_data) in enumerate(zip(clip_files, clips_data)):
         video_path = os.path.join(clips_folder_path, clip_file)
         logger.info(f"Processing subtitles for: {clip_file}")
+
         video = VideoFileClip(video_path)
-        video_w, video_h = video.size
-        caption_clips = []
 
-        clip_start_ms = clip_data["start"]
-        segments = _chunk_words_for_subtitles(clip_data["words"])
+        caption_clips = engine.generate_subtitles(
+            video=video,
+            words=clip_data["words"],
+            clip_start_ms=clip_data["start"],
+        )
 
-        for seg in segments:
-            text = " ".join(w["text"] for w in seg)
-            start_ms = seg[0]["start"]
-            end_ms = seg[-1]["end"]
-            start_sec = (start_ms - clip_start_ms) / 1000.0
-            end_sec = (end_ms - clip_start_ms) / 1000.0
-            start_sec = max(0.0, min(start_sec, video.duration))
-            end_sec = max(0.0, min(end_sec, video.duration))
-            if end_sec <= start_sec:
-                continue
-            caption_clips.append(
-                _create_caption_clip(
-                    text, video_w, video_h, start=start_sec, end=end_sec
-                )
-            )
-
-        if highlight_words:
-            font_size = _font_size_for_video(video_w, video_h)
-            for w in clip_data["words"]:
-                word_text = w["text"]
-                word_clip = TextClip(
-                    text=word_text,
-                    font=FONT,
-                    font_size=font_size,
-                    color=HIGHLIGHT_COLOR,
-                    stroke_color=STROKE_COLOR,
-                    stroke_width=STROKE_WIDTH,
-                )
-                start_sec = (w["start"] - clip_start_ms) / 1000.0
-                end_sec = (w["end"] - clip_start_ms) / 1000.0
-                word_clip = (
-                    word_clip.with_position(("center", int(video_h * 0.75)))
-                    .with_start(start_sec)
-                    .with_end(end_sec)
-                )
-                caption_clips.append(word_clip)
         final = CompositeVideoClip([video] + caption_clips)
         output_path = os.path.join(output_folder, f"subtitled_{clip_file}")
         final.write_videofile(
-            output_path, codec="libx264", audio_codec="aac", preset="medium", threads=2
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            preset="medium",
+            threads=2,
         )
 
         video.close()
