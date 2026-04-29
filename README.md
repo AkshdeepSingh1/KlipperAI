@@ -58,10 +58,17 @@ The server will start, typically at `http://localhost:8000`. You can access the 
 
 #### 2. Start the Background Worker
 In a second terminal (ensure the virtual environment is activated):
+
 ```bash
+# Start the default worker (P1 Video Processor)
 python worker.py
+
+# OR start a specific worker using the --worker flag
+python worker.py --worker p1  # Video Processor
+python worker.py --worker p2  # Text-to-Content Generator
 ```
-The worker will start polling the Azure Queue for new video processing jobs.
+
+The launcher will start the selected worker implementation. You can run `python worker.py --help` to see all available options.
 
 ## Docker Support
 
