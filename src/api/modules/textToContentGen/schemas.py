@@ -94,3 +94,19 @@ class ScheduledContentResponse(ContentJobRequestResponse):
 
     class Config:
         from_attributes = True
+
+
+class DashboardStatsResponse(BaseModel):
+    """Response schema for dashboard statistics"""
+    scheduledThisMonth: int = Field(..., description="Count of jobs scheduled this month")
+    inProgress: int = Field(..., description="Count of jobs currently in progress")
+    scheduledToday: int = Field(..., description="Count of jobs scheduled for today")
+
+
+class MonthlyScheduleResponse(BaseModel):
+    """Response schema for monthly schedule item"""
+    id: str = Field(..., description="Job request ID")
+    date: datetime = Field(..., description="Scheduled timestamp")
+    type: str = Field(..., description="Source type (ai or self)")
+    title: str = Field(..., description="Title of the content")
+    status: str = Field(..., description="Processing status")

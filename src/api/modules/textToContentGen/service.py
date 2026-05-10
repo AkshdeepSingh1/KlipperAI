@@ -72,3 +72,47 @@ class ContentJobService:
             ContentJobRequest.user_id == user_id,
             func.date(ContentJobRequest.scheduled_at_utc) == target_date
         ).all()
+
+    @staticmethod
+    def get_dashboard_stats(db: Session, user_id: int) -> dict:
+        """Get dashboard statistics for a user"""
+        from sqlalchemy import func
+        from datetime import datetime
+        
+        now = datetime.utcnow()
+        today = now.date()
+        first_day_of_month = today.replace(day=1)
+        
+        # Scheduled this month
+        scheduled_this_month = db.query(ContentJobRequest).filter(
+            ContentJobRequest.user_id == user_id,
+            ContentJobRequest.scheduled_at_utc >= first_day_of_month
+        ).count()
+        
+        # In progress
+        in_progress = db.query(ContentJobRequest).filter(
+            ContentJobRequest.user_id == user_id,
+            ContentJobRequest.processing_status == ContentJobRequestProcessingStatus.PROCESSING
+        ).count()
+        
+        # Scheduled today
+        scheduled_today = db.query(ContentJobRequest).filter(
+            ContentJobRequest.user_id == user_id,
+            func.date(ContentJobRequest.scheduled_at_utc) == today
+        ).count()
+        
+        return {
+            "scheduledThisMonth": scheduled_this_month,
+            "inProgress": in_progress,
+            "scheduledToday": scheduled_today
+        }
+
+    @staticmethod
+    def get_monthly_schedule(db: Session, user_id: int, year: int, month: int) -> List[ContentJobRequest]:
+        """Get all content job requests scheduled for a specific month for a user"""
+        from sqlalchemy import extract
+        return db.query(ContentJobRequest).filter(
+            ContentJobRequest.user_id == user_id,
+            extract('year', ContentJobRequest.scheduled_at_utc) == year,
+            extract('month', ContentJobRequest.scheduled_at_utc) == month
+        ).all()

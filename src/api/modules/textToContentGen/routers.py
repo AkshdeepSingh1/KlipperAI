@@ -11,7 +11,9 @@ from .schemas import (
     VideoTemplateResponse, 
     VoiceTemplateResponse,
     RenderResponse,
-    ScheduledContentResponse
+    ScheduledContentResponse,
+    DashboardStatsResponse,
+    MonthlyScheduleResponse
 )
 from .service import ContentJobService
 
@@ -242,4 +244,98 @@ async def get_scheduled_content(
         )
 
 
-        # make a new api here please
+@router.get(
+    "/getDashboardStats",
+    response_model=DashboardStatsResponse,
+    summary="Get dashboard statistics",
+    description="Retrieve counts of scheduled and in-progress jobs for the dashboard"
+)
+async def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    http_request: Request = None,
+):
+    """
+    Get dashboard statistics for the authenticated user.
+    """
+    try:
+        # Get user_id from request state (set by auth middleware)
+        user_id = getattr(http_request.state, "user_id", None)
+        if not user_id:
+            logger.error("User ID not found in request state")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not authenticated"
+            )
+
+        logger.info(f"Fetching dashboard stats for user {user_id}")
+
+        stats = ContentJobService.get_dashboard_stats(db=db, user_id=user_id)
+
+        return stats
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching dashboard stats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching dashboard stats"
+        )
+
+
+@router.get(
+    "/getMonthlySchedule",
+    response_model=List[MonthlyScheduleResponse],
+    summary="Get monthly schedule for a user",
+    description="Retrieve all content job requests scheduled for a specific month for the authenticated user"
+)
+async def get_monthly_schedule(
+    year: int = Query(..., description="Year (e.g., 2026)"),
+    month: int = Query(..., description="Month (1-12)"),
+    db: Session = Depends(get_db),
+    http_request: Request = None,
+):
+    """
+    Get monthly schedule for a user.
+    """
+    try:
+        # Get user_id from request state (set by auth middleware)
+        user_id = getattr(http_request.state, "user_id", None)
+        if not user_id:
+            logger.error("User ID not found in request state")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not authenticated"
+            )
+
+        logger.info(f"Fetching monthly schedule for user {user_id} for {year}-{month}")
+
+        jobs = ContentJobService.get_monthly_schedule(db=db, user_id=user_id, year=year, month=month)
+
+        response = []
+        for job in jobs:
+            # Map source_type to 'ai' or 'self'
+            job_type = "ai" if job.source_type == "ai" else "self"
+            
+            # Use raw enum value for status (e.g. 'completed', 'processing', 'scheduled', 'failed')
+            job_status = job.processing_status.value if hasattr(job.processing_status, 'value') else job.processing_status
+
+            response.append(MonthlyScheduleResponse(
+                id=str(job.id),
+                date=job.scheduled_at_utc,
+                type=job_type,
+                title=job.title,
+                status=job_status
+            ))
+
+        logger.info(f"Retrieved {len(response)} monthly schedule items")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching monthly schedule: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching monthly schedule"
+        )
