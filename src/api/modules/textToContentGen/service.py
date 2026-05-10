@@ -44,3 +44,31 @@ class ContentJobService:
         """Get all video templates"""
         templates = db.query(VideoTemplate).all()
         return templates
+
+    @staticmethod
+    def get_all_voice_templates(db: Session) -> List:
+        """Get all active voice templates"""
+        from src.shared.models import VoiceTemplate
+        return db.query(VoiceTemplate).filter(VoiceTemplate.is_active == True).order_by(VoiceTemplate.sort_order).all()
+
+    @staticmethod
+    def get_latest_renders(db: Session, last_id: int = None, quantity: int = 5) -> List[ContentJobRequest]:
+        """Get latest completed renders with pagination"""
+        query = db.query(ContentJobRequest).filter(
+            ContentJobRequest.processing_status == ContentJobRequestProcessingStatus.COMPLETED,
+            ContentJobRequest.output_url != None
+        )
+        
+        if last_id:
+            query = query.filter(ContentJobRequest.id < last_id)
+            
+        return query.order_by(ContentJobRequest.id.desc()).limit(quantity).all()
+
+    @staticmethod
+    def get_scheduled_content(db: Session, user_id: int, target_date: datetime.date) -> List[ContentJobRequest]:
+        """Get all content job requests scheduled for a specific date for a user"""
+        from sqlalchemy import func
+        return db.query(ContentJobRequest).filter(
+            ContentJobRequest.user_id == user_id,
+            func.date(ContentJobRequest.scheduled_at_utc) == target_date
+        ).all()

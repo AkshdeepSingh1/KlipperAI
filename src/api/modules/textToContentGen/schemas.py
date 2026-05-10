@@ -60,3 +60,37 @@ class VideoTemplateResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class VoiceTemplateResponse(BaseModel):
+    """Response schema for voice template"""
+    id: int = Field(..., description="Voice template ID")
+    name: str = Field(..., description="Voice name")
+    category: str = Field(..., description="Voice category")
+    accent: Optional[str] = Field(None, description="Voice accent")
+    tone: Optional[str] = Field(None, description="Voice tone")
+    url: Optional[str] = Field(None, validation_alias="in_house_db_url", description="Voice preview/base URL")
+    sort_order: int = Field(0, description="Sort order")
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+
+class RenderResponse(BaseModel):
+    """Response schema for a single render"""
+    url: str = Field(..., description="Full Azure Blob URL of the rendered video")
+    jobId: int = Field(..., description="Job request ID", alias="jobId")
+    contentTitle: str = Field(..., description="Title of the content", alias="contentTitle")
+    scheduledDate: datetime = Field(..., description="Scheduled date of the render", alias="scheduledDate")
+
+    class Config:
+        populate_by_name = True
+
+
+class ScheduledContentResponse(ContentJobRequestResponse):
+    """Response schema for scheduled content with optional full URL"""
+    full_output_url: Optional[str] = Field(None, description="Full Azure Blob URL if processed")
+
+    class Config:
+        from_attributes = True

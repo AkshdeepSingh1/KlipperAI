@@ -6,5 +6,16 @@ from .auth_session import AuthSession
 from .enums import GenerateThumbnailProcess
 from .content_job_request import ContentJobRequest
 from .video_template import VideoTemplate
+from .voice_template import VoiceTemplate
 
-__all__ = ["User", "Video", "ProcessingJob", "Clip", "AuthSession", "GenerateThumbnailProcess", "ContentJobRequest", "VideoTemplate"]
+__all__ = [
+    "User",
+    "Video",
+    "ProcessingJob",
+    "Clip",
+    "AuthSession",
+    "GenerateThumbnailProcess",
+    "ContentJobRequest",
+    "VideoTemplate",
+    "VoiceTemplate",
+]

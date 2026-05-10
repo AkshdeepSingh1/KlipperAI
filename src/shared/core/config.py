@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     #api keys
     ASSEMBLYAI_API_KEY: str = Field(description="AssemblyAI API key")
     OPENAI_API_KEY: str = Field(description="OpenAI API key")
+    ELEVEN_LABS_API_KEY: str = Field(description="ElevenLabs API key")
 
     # CORS
     ALLOWED_ORIGINS: List[str] = Field(default=["*"], description="Allowed origins for CORS")
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
     
     # Azure Queue Storage
     AZURE_QUEUE_NAME: str = Field(description="Azure Queue name for video processing")
+    AZURE_QUEUE_P2_TEXT_TO_CONTENT_WORKER: str = Field(description="Azure Queue name for P2 Text-to-Content worker")
     THUMBNAIL_QUEUE_NAME: str = Field(default="generatethumbnailqueue", description="Queue name for thumbnail generation")
     
     # JWT Authentication

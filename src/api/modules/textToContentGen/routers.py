@@ -1,9 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from datetime import datetime, date as date_type
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from src.shared.core.database import get_db
 from src.shared.core.logger import get_logger
-from .schemas import CreateContentJobRequest, ContentJobRequestResponse, VideoTemplateResponse
+from src.shared.enums import ContentJobRequestProcessingStatus
+from .schemas import (
+    CreateContentJobRequest, 
+    ContentJobRequestResponse, 
+    VideoTemplateResponse, 
+    VoiceTemplateResponse,
+    RenderResponse,
+    ScheduledContentResponse
+)
 from .service import ContentJobService
 
 logger = get_logger(__name__)
@@ -101,3 +110,136 @@ async def get_video_templates(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while fetching video templates"
         )
+
+
+@router.get(
+    "/getAudio",
+    response_model=List[VoiceTemplateResponse],
+    summary="Get all active voice templates",
+    description="Retrieve all active voice templates for text-to-speech"
+)
+async def get_audio_templates(
+    db: Session = Depends(get_db),
+):
+    """
+    Get all active voice templates.
+    
+    Returns a list of all available voice templates with their details.
+    """
+    try:
+        logger.info("Fetching all active voice templates")
+
+        voices = ContentJobService.get_all_voice_templates(db=db)
+
+        logger.info(f"Retrieved {len(voices)} voice templates")
+
+        return [VoiceTemplateResponse.model_validate(voice) for voice in voices]
+
+    except Exception as e:
+        logger.error(f"Error fetching voice templates: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching voice templates"
+        )
+
+
+@router.get(
+    "/getLatestRenders",
+    response_model=List[RenderResponse],
+    summary="Get latest completed renders",
+    description="Retrieve the latest completed renders with pagination support"
+)
+async def get_latest_renders(
+    last_id: Optional[int] = Query(None, alias="Id"),
+    quantity: int = Query(5),
+    db: Session = Depends(get_db),
+):
+    """
+    Get latest completed renders.
+    
+    - **last_id** (Id): The ID to start fetching renders before (for pagination).
+    - **quantity**: Number of renders to fetch (default: 5).
+    """
+    try:
+        logger.info(f"Fetching latest renders: last_id={last_id}, quantity={quantity}")
+
+        renders = ContentJobService.get_latest_renders(db=db, last_id=last_id, quantity=quantity)
+
+        response = []
+        for render in renders:
+            # Construct the full Azure Blob URL
+            # Format: https://learningqueues.blob.core.windows.net/processor2-outputs/{job_id}/{guid}
+            # render.output_url contains the guid (e.g. uuid.mp4)
+            url = f"https://learningqueues.blob.core.windows.net/processor2-outputs/{render.id}/{render.output_url}"
+            response.append(RenderResponse(
+                url=url, 
+                jobId=render.id,
+                contentTitle=render.title,
+                scheduledDate=render.scheduled_at_utc
+            ))
+
+        logger.info(f"Retrieved {len(response)} renders")
+        return response
+
+    except Exception as e:
+        logger.error(f"Error fetching latest renders: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching latest renders"
+        )
+
+
+@router.get(
+    "/getScheduledContent",
+    response_model=List[ScheduledContentResponse],
+    summary="Get scheduled content for a specific date",
+    description="Retrieve all content job requests scheduled for a specific date for the authenticated user"
+)
+async def get_scheduled_content(
+    target_date: date_type = Query(..., alias="date", description="Target date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    http_request: Request = None,
+):
+    """
+    Get scheduled content for a specific date.
+    
+    - **date**: The date to fetch scheduled content for.
+    """
+    try:
+        # Get user_id from request state (set by auth middleware)
+        user_id = getattr(http_request.state, "user_id", None)
+        if not user_id:
+            logger.error("User ID not found in request state")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not authenticated"
+            )
+
+        logger.info(f"Fetching scheduled content for user {user_id} on {target_date}")
+
+        jobs = ContentJobService.get_scheduled_content(db=db, user_id=user_id, target_date=target_date)
+
+        response = []
+        for job in jobs:
+            job_data = ScheduledContentResponse.model_validate(job)
+            
+            # Construct full URL if completed and GUID (output_url) is present
+            if job.processing_status == ContentJobRequestProcessingStatus.COMPLETED and job.output_url:
+                job_data.full_output_url = f"https://learningqueues.blob.core.windows.net/processor2-outputs/{job.id}/{job.output_url}"
+            
+            response.append(job_data)
+
+        logger.info(f"Retrieved {len(response)} scheduled items")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching scheduled content: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching scheduled content"
+        )
+
+
+        # make a new api here please

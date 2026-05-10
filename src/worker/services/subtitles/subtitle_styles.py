@@ -1,11 +1,16 @@
-"""
-Subtitle Styles
-Defines the SubtitleStyle configuration dataclass and a registry
-of predefined style presets selectable by name.
-"""
-
+import os
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
+
+# ── Font paths ────────────────────────────────────────────────────────
+# Resolve the project root relative to this file
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
+FONT_DIR = PROJECT_ROOT / "asset" / "fonts"
+
+RUBIK_REGULAR = str(FONT_DIR / "Rubik-Regular.ttf")
+RUBIK_BOLD = str(FONT_DIR / "Rubik-Bold.ttf")
+RUBIK_BLACK = str(FONT_DIR / "Rubik-Black.ttf")
 
 
 @dataclass(frozen=True)
@@ -27,7 +32,7 @@ class SubtitleStyle:
         font_size_max:   Ceiling for dynamic sizing.
     """
 
-    font: str = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+    font: str = RUBIK_BOLD
     font_size: int = 60
     color: str = "white"
     stroke_color: Optional[str] = "black"
@@ -51,7 +56,7 @@ class SubtitleStyles:
     """
 
     TIKTOK_BOLD = SubtitleStyle(
-        font="/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        font=RUBIK_BOLD,
         font_size=60,
         color="white",
         stroke_color="black",
@@ -66,7 +71,7 @@ class SubtitleStyles:
     )
 
     MINIMAL = SubtitleStyle(
-        font="/System/Library/Fonts/Helvetica.ttc",
+        font=RUBIK_REGULAR,
         font_size=45,
         color="white",
         stroke_color=None,
@@ -81,7 +86,7 @@ class SubtitleStyles:
     )
 
     CINEMATIC = SubtitleStyle(
-        font="/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        font=RUBIK_BOLD,
         font_size=50,
         color="white",
         stroke_color="#333333",
@@ -93,6 +98,21 @@ class SubtitleStyles:
         font_size_min=16,
         font_size_max=50,
         mode="chunk",
+    )
+
+    REDDIT_STORIES = SubtitleStyle(
+        font=RUBIK_BLACK,
+        font_size=120,
+        color="#ffdd00",
+        stroke_color="black",
+        stroke_width=4,
+        highlight_color="#ffdd00",
+        position="center",
+        max_width_ratio=0.8,
+        font_size_ratio=0.06,
+        font_size_min=20,
+        font_size_max=80,
+        mode="word",
     )
 
     # ── lookup helper ────────────────────────────────────────────────
@@ -131,6 +151,7 @@ class SubtitleStyleRegistry:
         "TIKTOK_BOLD": SubtitleStyles.TIKTOK_BOLD,
         "MINIMAL": SubtitleStyles.MINIMAL,
         "CINEMATIC": SubtitleStyles.CINEMATIC,
+        "REDDIT_STORIES": SubtitleStyles.REDDIT_STORIES,
     }
 
     @classmethod

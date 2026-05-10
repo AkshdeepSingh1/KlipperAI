@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from src.shared.core.logger import get_logger
-from src.shared.enums import ProcessingStatus
-from src.shared.models import ProcessingJob
+from src.shared.enums import ProcessingStatus, ContentJobRequestProcessingStatus
+from src.shared.models import ProcessingJob, ContentJobRequest
 
 logger = get_logger(__name__)
 
@@ -98,3 +98,61 @@ def acquire_lock(db: Session, video_id: int, user_id: int) -> ProcessingJob:
         f"Failed to acquire processing lock for video_id={video_id} after retries."
     )
     return None
+
+
+def acquire_content_job_lock(db: Session, request_id: int) -> ContentJobRequest:
+    """
+    Atomically acquire a lock for a content job request.
+    Uses row-level locking (FOR UPDATE) to ensure idempotency.
+
+    Args:
+        db: Active SQLAlchemy session
+        request_id: ID of the content_job_request to lock
+
+    Returns:
+        ContentJobRequest instance if lock acquired, None otherwise
+    """
+    try:
+        # Fetch the request row with a row-level lock
+        job_request = (
+            db.query(ContentJobRequest)
+            .filter(ContentJobRequest.id == request_id)
+            .with_for_update()
+            .first()
+        )
+
+        if not job_request:
+            logger.error(f"ContentJobRequest with id={request_id} not found.")
+            return None
+
+        # Check for idempotency
+        if job_request.processing_status == ContentJobRequestProcessingStatus.COMPLETED:
+            logger.info(f"Request {request_id} is already COMPLETED. Skipping.")
+            return None
+
+        if job_request.processing_status == ContentJobRequestProcessingStatus.PROCESSING:
+            # Check for stale jobs (optional, but good for robustness)
+            age = datetime.utcnow() - job_request.updated_at_utc.replace(tzinfo=None)
+            if age > timedelta(minutes=STALE_THRESHOLD_MINUTES):
+                logger.warning(
+                    f"Found stale PROCESSING job for request_id={request_id} (age: {age}). Retrying."
+                )
+            else:
+                logger.warning(
+                    f"Request {request_id} is already in PROCESSING state and not stale. Skipping."
+                )
+                return None
+
+        # Acquire lock by updating status
+        logger.info(f"Acquiring lock: Updating status to PROCESSING for request_id={request_id}")
+        job_request.processing_status = ContentJobRequestProcessingStatus.PROCESSING
+        job_request.updated_at_utc = datetime.utcnow()
+        db.commit()
+        db.refresh(job_request)
+
+        return job_request
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to acquire content job lock for request_id={request_id}: {e}")
+        return None

@@ -49,6 +49,7 @@ class ContentJobRequest(Base):
     )
     created_at_utc = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at_utc = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    output_url = Column(Text, nullable=True)
 
     def __repr__(self):
         return f"<ContentJobRequest(id={self.id}, title={self.title}, status={self.processing_status})>"
