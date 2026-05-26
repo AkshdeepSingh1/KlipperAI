@@ -1,0 +1,9 @@
+# ============================================================
+# cron.txt — Daily Job Dispatcher Cron (Dockerfile.cron)
+# Install: pip install -r requirements/base.txt -r requirements/cron.txt
+# ============================================================
+
+# The cron job only queries the DB and enqueues Azure Queue messages.
+# Everything needed is already in base.txt — no extra packages required.
+
+-r base.txt

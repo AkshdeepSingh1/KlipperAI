@@ -1,6 +1,8 @@
 .venv
 .env
 
+k8s/secret.yaml
+
 *__pycache__
 .DS_Store
 

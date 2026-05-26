@@ -1,0 +1,21 @@
+# ============================================================
+# worker2.txt — P2 Text-to-Content Worker (Dockerfile.worker2)
+# Install: pip install -r requirements/base.txt -r requirements/worker2.txt
+# ============================================================
+
+-r base.txt
+
+# TTS — ElevenLabs (text_to_content_processor.py uses eleven_labs_service)
+elevenlabs
+
+# Video assembly (text_to_content_processor.py uses moviepy directly)
+moviepy==2.2.1
+ImageIO==2.37.2
+imageio-ffmpeg==0.6.0
+decorator==5.2.1
+proglog==0.1.12
+tqdm==4.67.1
+
+# Subtitle rendering (SubtitleEngine uses pillow/numpy for TextClip)
+pillow==11.0.0
+numpy==2.4.0

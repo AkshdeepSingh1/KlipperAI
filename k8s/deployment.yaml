@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autotube-api
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: autotube-api
+
+  template:
+    metadata:
+      labels:
+        app: autotube-api
+
+    spec:
+      containers:
+        - name: autotube-api
+
+          image: autotubeacr.azurecr.io/autotube-api:v2
+
+          envFrom:
+            - secretRef:
+                name: autotube-secrets  
+
+          ports:
+            - containerPort: 8000

@@ -20,3 +20,25 @@ services:
     # restart: unless-stopped
     depends_on:
       - api
+
+  worker2:
+    image: kliper-worker2-image
+    build:
+      context: .
+      dockerfile: Dockerfile.worker2
+    env_file:
+      - .env
+    # restart: unless-stopped
+    depends_on:
+      - api
+
+  cron:
+    image: kliper-cron-image
+    build:
+      context: .
+      dockerfile: Dockerfile.cron
+    env_file:
+      - .env
+    # restart: unless-stopped
+    depends_on:
+      - api
