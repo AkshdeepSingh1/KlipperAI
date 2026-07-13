@@ -71,6 +71,26 @@ class DailyJobDispatcherCronJob(BaseWorker):
 
             self._execute_dispatch()
 
+    def run_once(self) -> int:
+        """
+        Single-shot dispatch for external schedulers (e.g. a Kubernetes CronJob):
+        initialize, dispatch today's jobs exactly once, and return.
+
+        Unlike run(), this does NOT loop or sleep — the scheduler owns the timing.
+        Exceptions propagate so the process exits non-zero and the CronJob run is
+        marked failed (and retried per its restartPolicy).
+        """
+        try:
+            self.setup()
+            self.logger.info(f"[{self.name}] Single-shot dispatch...")
+            enqueued = self._dispatcher.dispatch_todays_jobs()
+            self.logger.info(
+                f"[{self.name}] Dispatch complete. {enqueued} job(s) enqueued."
+            )
+            return enqueued
+        finally:
+            self.teardown()
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

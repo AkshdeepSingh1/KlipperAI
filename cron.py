@@ -44,6 +44,14 @@ def main() -> None:
             "(default: daily_dispatcher)"
         ),
     )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help=(
+            "Run the job a single time and exit, instead of looping. Use this when "
+            "an external scheduler owns the timing (e.g. a Kubernetes CronJob)."
+        ),
+    )
 
     args = parser.parse_args()
     job_class = CRON_REGISTRY.get(args.job)
@@ -52,9 +60,17 @@ def main() -> None:
         logger.error(f"Unknown cron job: {args.job}")
         sys.exit(1)
 
-    logger.info(f"Starting cron job: {args.job}")
     job = job_class()
-    job.start()
+
+    if args.once:
+        if not hasattr(job, "run_once"):
+            logger.error(f"Cron job '{args.job}' does not support --once")
+            sys.exit(1)
+        logger.info(f"Running cron job once: {args.job}")
+        job.run_once()
+    else:
+        logger.info(f"Starting cron job: {args.job}")
+        job.start()
 
 
 if __name__ == "__main__":

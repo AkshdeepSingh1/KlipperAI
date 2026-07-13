@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: autotube-worker2
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: autotube-worker2
+
+  template:
+    metadata:
+      labels:
+        app: autotube-worker2
+
+    spec:
+      containers:
+        - name: autotube-worker2
+
+          image: autotubeacr.azurecr.io/autotube-worker2:202260619.1
+
+          envFrom:
+            - secretRef:
+                name: autotube-secrets

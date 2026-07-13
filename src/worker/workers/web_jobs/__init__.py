@@ -1,2 +1,2 @@
-from .P1VideoProcessorWorker import P1VideoProcessorWorker
-from .P2TextToContentWorker import P2TextToContentWorker
+# Web jobs package
+# Modules are imported dynamically by the launcher to avoid cross-contamination of worker dependencies.

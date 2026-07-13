@@ -27,6 +27,14 @@ class Settings(BaseSettings):
 
     # CORS
     ALLOWED_ORIGINS: List[str] = Field(default=["*"], description="Allowed origins for CORS")
+
+    # Auth cookie security.
+    # Cross-site cookie auth (frontend and backend on different origins) requires
+    # COOKIE_SAMESITE="none" AND COOKIE_SECURE=True, which only works over HTTPS.
+    # For local dev where frontend/backend share the host (localhost, different
+    # ports = same site), keep the defaults: samesite="lax", secure=False.
+    COOKIE_SECURE: bool = Field(default=False, description="Set the Secure flag on auth cookies (requires HTTPS)")
+    COOKIE_SAMESITE: str = Field(default="lax", description='SameSite policy for auth cookies: "lax", "strict", or "none"')
     
     # Database
     DATABASE_URL: str = Field(description="PostgreSQL database URL")

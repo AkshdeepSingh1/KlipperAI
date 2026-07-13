@@ -1,9 +1,12 @@
 .venv
 .env
 
-k8s/secret.yaml
+# Kubernetes secrets — real credentials. Never commit (secret.example.yaml is fine).
+k8s/**/secret.yaml
 
 *__pycache__
 .DS_Store
 
 downloads/
+
+OVERVIEW.md

@@ -47,11 +47,16 @@ app.add_middleware(
 
 app.add_middleware(
     AuthMiddleware,
-    public_paths={"/", "/health", "/openapi.json", "/docs", "/redoc"},
-    public_prefixes=("/auth",),
+    public_paths={"/", "/health", "/openapi.json", "/docs", "/redoc", "/api/health", "/api/openapi.json", "/api/docs", "/api/redoc"},
+    public_prefixes=("/auth", "/api/auth"),
 )
 
-# Register routers
+# Register routers (both with and without '/api' prefix for compatibility with proxy/ingress rewrites)
+app.include_router(video_upload_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(user_router, prefix="/api")
+app.include_router(text_to_content_gen_router, prefix="/api")
+
 app.include_router(video_upload_router)
 app.include_router(auth_router)
 app.include_router(user_router)

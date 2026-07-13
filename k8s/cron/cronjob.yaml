@@ -1,0 +1,44 @@
+# Daily scheduled-content dispatcher.
+#
+# Runs the dispatcher ONCE per day at 06:00 UTC and exits — Kubernetes owns the
+# timing (the app's --once mode skips the internal forever-loop). This keeps zero
+# idle footprint on the capacity-constrained node, versus a 24/7 Deployment.
+#
+# Build the image (amd64 — AKS nodes are amd64):
+#   docker build --platform linux/amd64 -f Dockerfile.cron \
+#     -t autotubeacr.azurecr.io/autotube-cron:v1 .
+#   docker push autotubeacr.azurecr.io/autotube-cron:v1
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: autotube-cron-daily-dispatcher
+  namespace: default
+  labels:
+    app: autotube-cron
+spec:
+  schedule: "0 6 * * *"          # 06:00 every day
+  timeZone: "Etc/UTC"            # interpret the schedule in UTC (matches the app)
+  concurrencyPolicy: Forbid       # never overlap runs
+  startingDeadlineSeconds: 600    # if a run is missed (e.g. node was full), start within 10m
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2             # retry a failed dispatch up to 2×
+      activeDeadlineSeconds: 900  # kill a run that hangs beyond 15m
+      template:
+        metadata:
+          labels:
+            app: autotube-cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: cron
+              image: autotubeacr.azurecr.io/autotube-cron-worker2:20260712.1
+              imagePullPolicy: IfNotPresent
+              # Override the image's looping CMD with single-shot mode.
+              command: ["python", "cron.py", "--job", "daily_dispatcher", "--once"]
+              # Same config as the API/workers (DB, Azure queues, JWT, keys).
+              envFrom:
+                - secretRef:
+                    name: autotube-secrets

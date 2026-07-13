@@ -1,0 +1,36 @@
+# Let's Encrypt issuers for cert-manager (cluster-scoped).
+# Requires cert-manager to be installed in the cluster.
+#
+# Use the STAGING issuer first to validate the whole flow without hitting
+# Let's Encrypt rate limits (important with nip.io, which is heavily shared).
+# Once you see certificates issue against staging, switch the Ingress
+# annotation to `letsencrypt-prod` and re-apply.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: 11akshdeep11@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: 11akshdeep11@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

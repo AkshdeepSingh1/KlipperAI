@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: autotube-api-service
+
+spec:
+  # ClusterIP: traffic now arrives via the ingress controller (TLS terminated
+  # there), so this service no longer needs its own public LoadBalancer IP.
+  type: ClusterIP
+
+  selector:
+    app: autotube-api
+
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

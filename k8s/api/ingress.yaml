@@ -1,0 +1,34 @@
+# HTTPS ingress for the backend API.
+#
+# Host is api.<ingress-controller-EXTERNAL-IP>.nip.io — nip.io resolves it to the
+# IP automatically, no DNS registration needed. Current ingress IP: 20.219.105.153.
+#
+# Issuer: letsencrypt-prod (switch to letsencrypt-staging if you hit LE rate limits).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: autotube-api-ingress
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Video uploads: lift the default 1MB body cap and give slow uploads time.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.20.219.105.153.nip.io
+      secretName: autotube-api-tls
+  rules:
+    - host: api.20.219.105.153.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: autotube-api-service
+                port:
+                  number: 80

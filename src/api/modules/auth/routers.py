@@ -17,6 +17,19 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _cookie_security_kwargs() -> dict:
+    """Shared security attributes for all auth cookies.
+
+    Driven by settings so the same code works for local dev (same-site over HTTP)
+    and cross-origin production (SameSite=None over HTTPS). delete_cookie must be
+    given the same secure/samesite values or the browser won't match and clear it.
+    """
+    return {
+        "secure": settings.COOKIE_SECURE,
+        "samesite": settings.COOKIE_SAMESITE,
+    }
+
+
 @router.post(
     "/register",
     response_model=AuthResponse,
@@ -74,24 +87,21 @@ async def register(
             key="auth_token",
             value=access_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         response.set_cookie(
             key="device_id",
             value=device_id,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         
@@ -175,24 +185,21 @@ async def login(
             key="auth_token",
             value=access_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         response.set_cookie(
             key="device_id",
             value=device_id,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         
@@ -328,16 +335,14 @@ async def refresh_token(
             key="auth_token",
             value=new_access_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,
-            secure=True,
-            samesite="lax",
+            **_cookie_security_kwargs(),
             max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         
@@ -402,10 +407,10 @@ async def logout(
         
         logger.info(f"User logged out successfully: user_id={session.user_id}")
         
-        # Clear all authentication cookies
-        response.delete_cookie(key="auth_token")
-        response.delete_cookie(key="refresh_token")
-        response.delete_cookie(key="device_id")
+        # Clear all authentication cookies (must match secure/samesite to be cleared)
+        response.delete_cookie(key="auth_token", **_cookie_security_kwargs())
+        response.delete_cookie(key="refresh_token", **_cookie_security_kwargs())
+        response.delete_cookie(key="device_id", **_cookie_security_kwargs())
         
         return None  # 204 No Content
         
