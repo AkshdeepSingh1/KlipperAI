@@ -15,7 +15,7 @@ class ElevenLabsService:
     def __init__(self):
         self.api_key = settings.ELEVEN_LABS_API_KEY
         # Fallback voice ID if DB lookup fails
-        self.FALLBACK_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"
+        self.FALLBACK_VOICE_ID = "21m00Tcm4TlvDq8ikWAMb"
 
     def text_to_speech(self, text: str, voice_over_id: int, output_path: str, db: Session = None) -> dict:
         """

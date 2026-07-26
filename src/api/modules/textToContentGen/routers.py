@@ -30,12 +30,17 @@ router = APIRouter(prefix="/textToContentGen", tags=["Text to Content Generation
 )
 async def create_content_job_request(
     request: CreateContentJobRequest,
+    run_now: bool = Query(
+        False,
+        alias="runNow",
+        description="If true, enqueue the job for immediate processing instead of waiting for the daily cron.",
+    ),
     db: Session = Depends(get_db),
     http_request: Request = None,
 ):
     """
     Create a new content job request.
-    
+
     - **title**: Title of the content job (required)
     - **source_type**: Source type - 'ai' or 'my_script' (default: my_script)
     - **prompt**: AI prompt for content generation (optional)
@@ -43,6 +48,8 @@ async def create_content_job_request(
     - **voice_over_id**: Voice over ID (optional)
     - **render_format**: Render format - 'vertical_9_16', 'square_1_1', or 'landscape_16_9' (default: vertical_9_16)
     - **template_id**: Template ID (optional)
+    - **scheduled_at_utc**: UTC timestamp for the chosen day (ignored when runNow=true)
+    - **runNow** (query): run immediately instead of on the scheduled day
     """
     try:
         # Get user_id from request state (set by auth middleware)
@@ -67,6 +74,8 @@ async def create_content_job_request(
             voice_over_id=request.voice_over_id,
             render_format=request.render_format.value,
             template_id=request.template_id,
+            scheduled_at_utc=request.scheduled_at_utc,
+            run_now=run_now,
         )
 
         logger.info(f"Content job request created successfully: {content_job.id}")

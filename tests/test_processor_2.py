@@ -49,7 +49,7 @@ def test_processor_run(request_id: int):
 if __name__ == "__main__":
     # Set the request_id you want to test here
     # Based on current database state, 1 is a valid ID
-    target_id = 11
+    target_id = 15
     
     if len(sys.argv) > 1:
         try:

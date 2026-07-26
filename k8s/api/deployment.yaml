@@ -18,7 +18,7 @@ spec:
       containers:
         - name: autotube-api
 
-          image: autotubeacr.azurecr.io/autotube-api:20270710.2
+          image: autotubeacr.azurecr.io/autotube-api:20260712.1
 
           envFrom:
             - secretRef:

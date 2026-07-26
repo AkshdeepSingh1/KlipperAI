@@ -8,5 +8,6 @@ k8s/**/secret.yaml
 .DS_Store
 
 downloads/
+Processor2Downloads/
 
 OVERVIEW.md

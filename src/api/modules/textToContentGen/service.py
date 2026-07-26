@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from src.shared.models import ContentJobRequest, VideoTemplate
 from src.shared.enums import ContentJobRequestProcessingStatus
+from src.shared.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContentJobService:
@@ -19,8 +22,23 @@ class ContentJobService:
         voice_over_id: int = None,
         render_format: str = None,
         template_id: int = None,
+        scheduled_at_utc: Optional[datetime] = None,
+        run_now: bool = False,
     ) -> ContentJobRequest:
-        """Create a new content job request"""
+        """
+        Create a new content job request.
+
+        - run_now=True: schedule it for "now" and enqueue it to the P2 queue
+          immediately, so the worker starts on it right away (no wait for cron).
+        - run_now=False: use the caller-provided ``scheduled_at_utc`` (the day the
+          user picked, as a UTC timestamp). The daily cron dispatches it on that
+          UTC date. Falls back to now if no date was supplied.
+        """
+        if run_now:
+            effective_scheduled_at = datetime.now(timezone.utc)
+        else:
+            effective_scheduled_at = scheduled_at_utc or datetime.now(timezone.utc)
+
         content_job = ContentJobRequest(
             user_id=user_id,
             title=title,
@@ -30,13 +48,30 @@ class ContentJobService:
             voice_over_id=voice_over_id,
             render_format=render_format,
             template_id=template_id,
-            scheduled_at_utc=datetime.now(timezone.utc),
+            scheduled_at_utc=effective_scheduled_at,
             processing_status=ContentJobRequestProcessingStatus.SCHEDULED,
         )
 
         db.add(content_job)
         db.commit()
         db.refresh(content_job)
+
+        if run_now:
+            # Push straight onto the P2 queue using the same path as the cron.
+            from src.worker.services.scheduled_jobs_dispatcher_service import (
+                ScheduledJobsDispatcherService,
+            )
+
+            enqueued = ScheduledJobsDispatcherService().enqueue_job(content_job)
+            if not enqueued:
+                logger.error(
+                    f"Run-now enqueue failed for content job {content_job.id}"
+                )
+                raise RuntimeError(
+                    "Content job was created but could not be enqueued for immediate processing"
+                )
+            logger.info(f"Content job {content_job.id} enqueued for immediate (run-now) processing")
+
         return content_job
 
     @staticmethod

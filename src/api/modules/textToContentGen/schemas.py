@@ -20,6 +20,10 @@ class CreateContentJobRequest(BaseModel):
         description="Render format (vertical_9_16, square_1_1, landscape_16_9)"
     )
     template_id: Optional[int] = Field(None, description="Template ID")
+    scheduled_at_utc: Optional[datetime] = Field(
+        None,
+        description="UTC timestamp for the day this should run. Ignored when runNow=true."
+    )
 
 
 class ContentJobRequestResponse(BaseModel):

@@ -83,6 +83,15 @@ class ScheduledJobsDispatcherService:
         finally:
             db.close()
 
+    def enqueue_job(self, job: ContentJobRequest) -> bool:
+        """
+        Public entry point to push a single content job onto the P2 queue.
+
+        Used by the API for "Run Now" so immediate dispatch uses the exact same
+        queue + encoding as the daily cron (no drift between the two paths).
+        """
+        return self._enqueue_job(job)
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
